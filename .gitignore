@@ -4,6 +4,7 @@ __pycache__/
 images_cache/
 thumbnails/
 *.csv
+!products.csv
 *.xlsx
 .DS_Store
 
