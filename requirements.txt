@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.5
+requests>=2.32
+pillow>=10.0
+numpy>=1.26
+scipy>=1.11
+scikit-image>=0.22
+scikit-learn>=1.4

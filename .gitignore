@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+images_cache/
+thumbnails/
+*.csv
+*.xlsx
+.DS_Store
+
+# ログ・スナップショット
+*.log
+*.csv.phase1plus
+before_lab.json
+summary*.md
+unzipped/
