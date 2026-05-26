@@ -185,28 +185,8 @@ def _fetch_image(url: str) -> Image.Image:
         raise HTTPException(status_code=400, detail=f"画像デコード失敗: {e}")
 
 
-def _classify_auto(res: dict) -> str:
-    """extract_lab() の 'auto' を auto_high / auto_low に細分化。
-
-    CLI 側(main)では全件の中央値計算が入るが、API は単発でも判断できるよう
-    AUTO_HIGH_ADJ_MIN(0.10) を固定閾値として使う。
-    """
-    if res["status"] != "auto":
-        return res["status"]
-    if (
-        res.get("edge_density") is not None
-        and res.get("size_ratio") is not None
-        and res.get("adj") is not None
-        and res["edge_density"] < el.AUTO_HIGH_EDGE_MAX
-        and res["size_ratio"] > el.AUTO_HIGH_SIZE_MIN
-        and (res["adj"] > el.AUTO_HIGH_ADJ_MIN or not res.get("is_container", False))
-    ):
-        return "auto_high"
-    return "auto_low"
-
-
 def _result_to_response(res: dict) -> ExtractLabResponse:
-    status = _classify_auto(res)
+    status = el.classify_status(res)
     lab = None
     if res.get("L") is not None:
         lab = LabValue(L=res["L"], a=res["a"], b=res["b"])
@@ -248,7 +228,7 @@ def extract_lab_batch_endpoint(req: ExtractLabBatchRequest):
         try:
             img = _fetch_image(p.image_url)
             res = el.extract_lab(img)
-            status = _classify_auto(res)
+            status = el.classify_status(res)
             results.append({
                 "id": p.id,
                 "status": status,

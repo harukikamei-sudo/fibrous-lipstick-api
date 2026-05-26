@@ -342,6 +342,26 @@ def extract_lab(img, debug=False):
     }
 
 
+def classify_status(res):
+    """extract_lab() の結果を auto_high / auto_low / excluded に分類。
+
+    CLI(main)と API(app.py)で同じロジックを使うため、ここに集約する。
+    AUTO_HIGH_* 閾値は固定値(中央値計算なし)。
+    """
+    if res.get("status") != "auto":
+        return res.get("status")
+    if (
+        res.get("edge_density") is not None
+        and res.get("size_ratio") is not None
+        and res.get("adj") is not None
+        and res["edge_density"] < AUTO_HIGH_EDGE_MAX
+        and res["size_ratio"] > AUTO_HIGH_SIZE_MIN
+        and (res["adj"] > AUTO_HIGH_ADJ_MIN or not res.get("is_container", False))
+    ):
+        return "auto_high"
+    return "auto_low"
+
+
 def make_thumbnail(img, product_id, status, result):
     """元画像 + 採用色 + 候補2,3色チップを並べたサムネイル。"""
     thumb = img.copy()
@@ -475,21 +495,11 @@ def main():
         if i % 10 == 0 or i == len(rows):
             print(f"[{i}/{len(rows)}] {product_id}: {res['status']} - {res['notes']}")
 
-    # auto_high / auto_low 判定 (bg_adj or 非容器形状)
+    # auto_high / auto_low 判定 (classify_status を CLI/API で共有)
     for r, m in zip(results, metas):
         if r["status"] != "auto" or m is None:
             continue
-        if (
-            m["edge_density"] is not None
-            and m["size_ratio"] is not None
-            and m["adj"] is not None
-            and m["edge_density"] < AUTO_HIGH_EDGE_MAX
-            and m["size_ratio"] > AUTO_HIGH_SIZE_MIN
-            and (m["adj"] > AUTO_HIGH_ADJ_MIN or not m["is_container"])
-        ):
-            r["status"] = "auto_high"
-        else:
-            r["status"] = "auto_low"
+        r["status"] = classify_status(m)
 
     # サムネイルを新 status で再描画
     for r, m in zip(results, metas):
