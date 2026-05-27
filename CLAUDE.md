@@ -180,7 +180,11 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
 
 ## トリビア・注意
 
-- HF アクセストークンは Tamable アカウントの `lips` 名のトークンを使った (**revoke 済み**、次回は再発行)
+- HF アクセストークン: 現在は Tamable アカウントの `lips2`(write)が稼働中。
+  git credential(osxkeychain)に保存済みなので `git push hf main` はそのまま通る。
+  ※ 旧 `lips` は revoke 済み。`hf auth login --force` は対話 token 入力が必要で、
+  CC セッションの `!` 経由だと getpass が echo 制御できず Aborted になる →
+  **実 Terminal で `cd ~/Desktop/fibrous-lipstick-api && .venv/bin/hf auth login --force`** を実行すること。
 - 公開 API は **無認証**。悪用が増えたら HF Space を private 化する選択肢あり
 - `huggingface-cli` は deprecated、新 CLI は `hf` コマンド (`pip install huggingface_hub`)
 - macOS Python 3.13 (system) は SSL 証明書問題あり。venv の `requests` を使えば OK
