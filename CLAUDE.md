@@ -135,10 +135,13 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
   … 145 商品を 1 回で計算。UI 実装の本線。lines 省略時はプリセットへフォールバック。
 - レスポンス: `{mode, table:[{id, line_id, s, s_source, applied:[{t,L,a,b}]}]}`
 
-**`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: **tint=0.4(★実測校正済)**、
-gloss=1 / velvet=4 / matte=8(未校正の暫定値)、other=3。tint だけ実測が入ったため
-単調性(gloss<tint…)はもう不変条件ではない。残り 3 つは塗り重ね画像が集まり次第
-0.1〜1 オーダーに更新予定(実測スケールは旧仮定 1〜8 より 10〜20 倍小さい)。
+**`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: 実測スケールに統一済み →
+gloss=0.25 / **tint=0.4(★実測校正)** / velvet=1.0 / matte=2.0 / other=0.6。
+旧 1〜8 は実測比 10〜20 倍過大と判明したため、tint=0.4 をアンカーに順序維持で
+再スケール。gloss は良い校正画像が入手困難で「tint より透ける」推論の 0.25 固定。
+velvet/matte は暫定で、校正画像が来たら estimate_s_layered で上書き予定。
+※ 鮮やか色(カタログ72%)は K/S が大きく t=1 で全カテゴリほぼ満色=S にほぼ非感応。
+S 差が効くのは淡色・低 t。
 **`classify_line_category(line_id)`**: line_id → 5 値(tint/matte/gloss/velvet/other)。
 キーワード対応(juicy→tint, blur/fudge→matte, glasting/dewy→gloss, velvet→velvet)。
 products.csv / products_with_lab.csv の line_category 列、resolve_line_s、/recommend
