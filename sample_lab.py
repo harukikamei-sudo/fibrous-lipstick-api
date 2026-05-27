@@ -215,6 +215,7 @@ def report(full_lab, thin_lab, sub_lab, t_light, dr_min):
           f"{'素肌下地' if sub_lab is not None else '白基板仮定'}) ===")
     print(f"  ch別 S    : {res['per_channel_s']}")
     print(f"  ΔR(full-thin): {res['delta_r']}  (dr_min={dr_min} 未満は除外)")
+    print(f"  物理整合   : {res['monotonic']}  (薄付きが素肌〜フルの間か)")
     print(f"  採用ch    : {res['adopted']}  ({res['n_adopted']}/3)")
     if res["s"] is None:
         print(f"  ⚠️ S: 算出不可 — {res['note']}")

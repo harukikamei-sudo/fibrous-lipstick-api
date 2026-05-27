@@ -30,8 +30,14 @@ _S_MAX = 1.0e4
 
 
 def _solve_s_channel(ks, r_obs, t, r_g, r_inf):
-    """1 チャネル分の S を解く。到達不能域はクランプして境界 S を返す。"""
-    lo, hi = (r_inf, r_g) if r_g >= r_inf else (r_g, r_inf)
+    """1 チャネル分の S を解く。到達不能域はクランプして境界 S を返す。
+
+    ks/r_g は km_reflectance に渡すため (1,) 配列のまま受けるが、ブラケット計算
+    (lo/hi/target)は必ずスカラーで行う(配列が混ざると target が配列化し brentq が
+    壊れる)。
+    """
+    r_g_s = float(np.ravel(r_g)[0])
+    lo, hi = (r_inf, r_g_s) if r_g_s >= r_inf else (r_g_s, r_inf)
     if (hi - lo) < km.EPS:
         # フル発色と下地がほぼ同色 → S は不定。散乱なしとして 0 を返す
         return 0.0
@@ -103,11 +109,11 @@ def estimate_s_scalar(full_lab, light_lab, t_light=0.3, substrate_lab=None,
     推定がばらつくのは暗・高彩度チャネルの飽和による artifact なので、情報の
     無いチャネルを捨てて残りの中央値を採る。
 
-    チャネル採用ゲート: フル発色と薄付きの反射率差 |R_full - R_thin| が dr_min
-    未満のチャネルは除外する。これは
-      - 飽和(薄≈フル)        → 差が小さい
-      - 顔料が透明なch(素肌≈フル≈薄) → 差が小さい
-    の両方を 1 つの片側ゲートで捌ける(どちらも S の情報を持たない)。
+    チャネル採用ゲート(両方を満たす ch のみ採用):
+      1. |R_full - R_thin| >= dr_min: 飽和(薄≈フル)も透明(素肌≈フル≈薄)も
+         この片側ゲートで除外できる(どちらも S の情報を持たない)。
+      2. 物理整合: R_thin が R_substrate と R_full の間にある(±tol)。照明ムラ等で
+         薄付きが素肌より明るい/フルより濃いといった非物理 ch を弾く。
 
     Args:
         full_lab/light_lab/t_light/substrate_lab: estimate_s と同じ。
@@ -130,14 +136,25 @@ def estimate_s_scalar(full_lab, light_lab, t_light=0.3, substrate_lab=None,
     """
     r_inf = np.asarray(lab_to_reflectance(full_lab), dtype=float)
     r_obs = np.asarray(lab_to_reflectance(light_lab), dtype=float)
+    if substrate_lab is not None:
+        r_sub = np.asarray(lab_to_reflectance(substrate_lab), dtype=float)
+    else:
+        r_sub = np.full(3, 1.0 - km.EPS)
     s_all = estimate_s(full_lab, light_lab, t_light=t_light,
                        substrate_lab=substrate_lab)
+
     dr = np.abs(r_inf - r_obs)
-    adopted = dr >= dr_min
+    # 物理整合: 薄付きが 素肌〜フル の間(±tol)にあるか
+    _tol = 0.01
+    lo = np.minimum(r_sub, r_inf) - _tol
+    hi = np.maximum(r_sub, r_inf) + _tol
+    monotonic = (r_obs >= lo) & (r_obs <= hi)
+    adopted = (dr >= dr_min) & monotonic
 
     result = {
         "per_channel_s": [round(float(v), 3) for v in s_all],
         "delta_r": [round(float(v), 4) for v in dr],
+        "monotonic": [bool(x) for x in monotonic],
         "adopted": [bool(x) for x in adopted],
         "n_adopted": int(adopted.sum()),
         "t_light": t_light,
@@ -147,7 +164,8 @@ def estimate_s_scalar(full_lab, light_lab, t_light=0.3, substrate_lab=None,
     if not adopted.any():
         result.update(
             s=None, status="all_saturated",
-            note="全チャネルが飽和(ΔR<dr_min)。校正不能 → より淡い色で取り直す",
+            note="採用ch ゼロ(飽和 ΔR<dr_min または 非物理)。校正不能 → "
+                 "より淡い色 / 照明の揃った画像で取り直す",
         )
         return result
 
