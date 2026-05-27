@@ -1,0 +1,7 @@
+model.png
+  source: Wikimedia Commons — File:My Red Lips (94322501).jpeg
+  page: https://commons.wikimedia.org/wiki/File:My_Red_Lips_(94322501).jpeg
+  author: 
+Trina
+  license: CC BY 3.0
+  credit: Imported from 500px (archived version) by the Archive Team. (detail page)
