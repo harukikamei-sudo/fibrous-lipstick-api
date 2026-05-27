@@ -2,6 +2,9 @@
 
 > このファイルは Claude Code が起動時に自動で読む。プロジェクトの前後関係を
 > 即座に把握できるよう簡潔にまとめてある。
+>
+> **理論・式の導出・計算過程・なぜその値か は [DESIGN.md](DESIGN.md)(ロジック設計書)** に集約。
+> ここは運用/進捗/申し送り、DESIGN.md は数理の根拠。迷ったら DESIGN.md を読む。
 
 ## プロジェクト概要
 
@@ -60,6 +63,7 @@ fibrous-lipstick-api/
 ├── Dockerfile         python:3.11-slim + libgl1 + 7860
 ├── requirements.txt
 ├── README.md          HF Spaces 用フロントマター付き
+├── DESIGN.md          ★ロジック設計書(理論/式の導出/計算過程/コード対応)
 └── DEPLOY.md          push 手順
 ```
 
