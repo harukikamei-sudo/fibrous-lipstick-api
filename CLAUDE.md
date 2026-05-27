@@ -37,6 +37,8 @@ fibrous-lipstick-api/
 ├── estimate_s.py      ★ライン S 逆推定 (brentq でチャネル毎に数値求解)
 ├── test_lab_utils.py  Lab↔反射率往復テスト (ΔE<1)
 ├── test_km.py         ★K-M 性質テスト (t=0で唇/t大で発色/S往復/table)
+├── sample_lab.py      ★校正CLI: 画像の薄/濃/素肌 領域→Lab→estimate_s で S 算出
+│                      (座標モード --thin/--full/--substrate or --gui ドラッグ選択)
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)
@@ -158,12 +160,18 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
 ### A. K-M モデルの本実装 ✅ 完了
 - `estimate_s` / `compute_applied_lab` / `compute_km_table` 実装済み
 - `/estimate_s` `/compute_km_table` の 501 解除済み(pydantic スキーマ付き)
-- **次の追い込み候補**:
-  - 実データで S を推定するための **薄付きスウォッチ画像** を集める or 撮る
-    (現状 S 推定の入力 light_lab が無い。フル発色 Lab は products_with_lab.csv にある)
-  - 薄付きが無い場合の S デフォルト値の決め方(ライン代表値 or 文献値)
-  - estimate_s の t_light を小さく(薄く)した方が暗channelの S が取れる旨を運用に反映
-  - compute_km_table の出力を CSV/JSON で保存するバッチ CLI があると便利
+- **S 校正の段取り(決定済み・出費回避方針)**:
+  - 口紅を買わず、**無料のスウォッチ画像**から light_lab/substrate を拾う方針。
+    画像源は lipscosme の pattern ページ(全145件 URL あり)や Google 画像検索。
+    宣材(特にマット"blur"系)は加工が強く計測不向き → ユーザー投稿の腕スウォッチ推奨。
+  - 校正ツール `sample_lab.py` 実装済み。画像の薄/濃/素肌領域を座標 or GUI で指定
+    → Lab 抽出 → estimate_s で S。合成画像(既知 S=2.5)で復元検証済み。
+  - **必要な画像**: 「薄づき + 素肌が同じ写真に写った」スウォッチ。各仕上げ
+    (gloss/tint/velvet/matte)で淡い色 1 枚ずつあれば 4 プリセット校正可能。
+  - S/t スケール不定性のため t_light は規約固定(0.3)。得るのは相対 S。
+  - **次アクション**: ユーザーが各仕上げの良いスウォッチ画像を数枚用意 → sample_lab.py
+    に投げて S 算出 → km.py の LINE_S_PRESETS を実測値で更新。
+- その他候補: compute_km_table 出力を CSV/JSON 保存するバッチ CLI。
 
 ### B. データ層の追い込み (余力があれば)
 - 誤抽出 3 件の連結成分ベース判定追加
