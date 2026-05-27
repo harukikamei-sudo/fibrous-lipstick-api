@@ -3,4 +3,5 @@
 streamlit>=1.30
 requests>=2.32
 numpy>=1.26
+pillow>=10.0
 scikit-image>=0.22
