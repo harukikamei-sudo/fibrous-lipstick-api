@@ -138,8 +138,9 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
 **`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: 実測スケールに統一済み →
 gloss=0.25 / **tint=0.4(★実測校正)** / velvet=1.0 / matte=2.0 / other=0.6。
 旧 1〜8 は実測比 10〜20 倍過大と判明したため、tint=0.4 をアンカーに順序維持で
-再スケール。gloss は良い校正画像が入手困難で「tint より透ける」推論の 0.25 固定。
-velvet/matte は暫定で、校正画像が来たら estimate_s_layered で上書き予定。
+再スケール。**校正画像が揃わなかったため tint 以外は推論値で確定**(不透明度比
+gloss 0.6x / velvet 2.5x / matte 5x、other は中間)。淡色でカテゴリ差が出ることは
+確認済み。将来 estimate_s_layered で実測できれば上書き可(必須ではない)。
 ※ 鮮やか色(カタログ72%)は K/S が大きく t=1 で全カテゴリほぼ満色=S にほぼ非感応。
 S 差が効くのは淡色・低 t。
 **`classify_line_category(line_id)`**: line_id → 5 値(tint/matte/gloss/velvet/other)。
@@ -225,10 +226,11 @@ results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}`。
       校正後の presets は概ね 0.1〜1 オーダーになる見込み。
     - **t軸の含意(要・後決め)**: S≈0.4 だと t=1(≈3塗り)では完全発色しない。UI の「フル」は
       t=1 ではなく ~5塗り相当に割り当てる必要(規約3 のマッピングを presets 確定後に決める)。
-  - **次アクション(B)**: gloss/tint/velvet/matte 各で「**1度塗り/2度塗り**(比≈2)・淡色・
-    テカリ少」の塗り重ね画像を 1 枚ずつ → sample_lab.py(--gui or 座標) → 単一 S を取得
-    → km.py の LINE_S_PRESETS を実測値(0.1〜1 オーダー)に更新。使用画像と Lab を記録。
-    tint は暫定 S≈0.4 が 1 点取れている(コーラル)。
+  - **(B) 決着**: 校正画像は tint(コーラル)以外集まらず → **tint=0.4 のみ実測、他は
+    推論値で確定**(LINE_S_PRESETS 参照)。gloss/velvet/matte の精緻化は任意の将来課題。
+    良い「1度/2度・淡色・テカリ少(腕推奨)」画像が手に入れば sample_lab.py →
+    estimate_s_layered で上書き可。探索の知見: 「全色/色味比較」投稿は単発塗り=不可、
+    「1色の塗り重ね/段階別 발색/레이어링」が必要。LIPS 投稿 URL なら CC が画像自動抽出可。
 - その他候補: compute_km_table 出力を CSV/JSON 保存するバッチ CLI。
 
 ### B. データ層の追い込み (余力があれば)

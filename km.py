@@ -49,10 +49,11 @@ __all__ = [
 # 透け感の強い順 gloss < tint < velvet < matte が大小関係(固定)。
 #
 # ※ tint=0.4 のみ実測校正値(estimate_s_layered, コーラル juicy_lasting → S≈0.42)。
-#   他は「実測スケールに合わせた暫定値」。旧仮定 1〜8 は 10〜20 倍過大と判明した
-#   ため、tint=0.4 をアンカーに 順序 gloss<tint<velvet<matte を保って 0.1〜2 へ
-#   再スケールした(velvet/matte は校正画像が来たら estimate_s_layered で上書き)。
-#   gloss は良い校正画像が入手困難なため「tint より透ける」推論で 0.25 固定。
+#   他 4 つは「推論値(確定の working 値)」。校正画像が揃わなかったため、tint=0.4 を
+#   アンカーに 順序 gloss<tint<velvet<matte を保ち、典型的な不透明度比で設定した
+#   (gloss 0.6x / velvet 2.5x / matte 5x / other は tint〜velvet 中間)。
+#   淡色ではカテゴリ差が applied 色に出ることを確認済み(鮮やか色は K/S 大で
+#   S にほぼ非感応)。将来 estimate_s_layered で実測できれば上書き可。
 #   絶対値は t のスケールと結合する点に注意(t∈[0,1] を t_steps 分割)。
 LINE_S_PRESETS = {
     "gloss":  [0.25, 0.25, 0.25],  # 艶・最も透ける(推論の暫定。校正画像が困難)
