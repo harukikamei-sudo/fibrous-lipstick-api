@@ -34,6 +34,8 @@ import km
 DEFAULT_API = "https://tamable-fibrous-lipstick-api.hf.space"
 ASSETS_LIPS = os.path.join(os.path.dirname(__file__), "assets", "lips")
 BG = (245, 245, 245)   # 唇以外(非マスク)の表示背景
+# model.png の帰属(CC BY 3.0 はクレジット表示が必要)
+MODEL_CREDIT = '唇画像: "My Red Lips" by Trina — CC BY 3.0 / Wikimedia Commons'
 
 
 # ============ 色ユーティリティ ============
@@ -55,56 +57,111 @@ def chip(lab, label=""):
 # 将来 Kawano さんのデータ形式が固まったら、この関数の内部だけ差し替える。
 
 def _dummy_lip(preset_name, w=400, h=300):
-    """assets が無い時のダミー唇(楕円ベース、α マスク付き)。"""
+    """assets が無い時のダミー唇。
+
+    キューピッドボウ(上唇の山)+ ふっくら下唇のシルエットを曲線で生成し、
+    中央ハイライト・合わせ目の陰・縁の陰影で立体感を付ける(L 変化=質感)。
+    2x スーパーサンプリングしてアンチエイリアス。
+    """
     lab = km.LIP_PRESETS.get(preset_name, [60.0, 20.0, 12.0])
-    base = tuple(int(round(v)) for v in lab_to_rgb(lab))
-    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    # 上唇(やや薄い楕円)+ 下唇(大きい楕円)
-    d.ellipse([w * 0.15, h * 0.28, w * 0.85, h * 0.55], fill=base + (255,))
-    d.ellipse([w * 0.13, h * 0.46, w * 0.87, h * 0.80], fill=base + (255,))
-    # 口の合わせ目(やや暗いライン)
-    d.line([(w * 0.20, h * 0.53), (w * 0.80, h * 0.53)],
-           fill=(max(base[0] - 60, 0), max(base[1] - 40, 0), max(base[2] - 40, 0), 255),
-           width=3)
-    # 下唇ハイライト(L 変化=質感のため。半透明の明るい楕円)
-    hi = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    ImageDraw.Draw(hi).ellipse([w * 0.38, h * 0.58, w * 0.62, h * 0.70],
-                               fill=(255, 255, 255, 90))
-    im = Image.alpha_composite(im, hi)
+    base = np.asarray(lab_to_rgb(lab), dtype=float)   # (3,) 0-255
+
+    ss = 2
+    W, H = w * ss, h * ss
+    cx = W * 0.5
+    x0, x1 = W * 0.14, W * 0.86
+    hw = (x1 - x0) / 2.0
+    ym = H * 0.50                                     # 口の合わせ目
+    xs = np.linspace(x0, x1, 280)
+    u = (xs - cx) / hw                                # -1..1
+
+    # 上唇トップ: 全体のふくらみ(1-u^2) から中央にキューピッドボウの窪み
+    top = ym - H * 0.15 * ((1 - u ** 2) - 0.38 * np.exp(-(u / 0.16) ** 2))
+    # 下唇ボトム: ふっくら丸み
+    bot = ym + H * 0.23 * np.clip(1 - u ** 2, 0, 1) ** 0.75
+
+    # シルエット(上唇・下唇ポリゴン)→ マスク
+    mimg = Image.new("L", (W, H), 0)
+    md = ImageDraw.Draw(mimg)
+    up = ([(xs[i], top[i]) for i in range(len(xs))]
+          + [(xs[i], ym) for i in range(len(xs) - 1, -1, -1)])
+    lo = ([(xs[i], ym) for i in range(len(xs))]
+          + [(xs[i], bot[i]) for i in range(len(xs) - 1, -1, -1)])
+    md.polygon(up, fill=255)
+    md.polygon(lo, fill=255)
+    mask = np.asarray(mimg) > 0
+
+    # 陰影フィールド: 下唇ハイライト - 合わせ目の陰 - 縁の暗がり
+    yy, xx = np.mgrid[0:H, 0:W]
+    hl = np.exp(-(((xx - cx) / (W * 0.15)) ** 2 + ((yy - (ym + H * 0.12)) / (H * 0.07)) ** 2))
+    mline = np.exp(-((yy - ym) / (H * 0.016)) ** 2)
+    rim = ((xx - cx) / hw) ** 2
+    shade = 0.45 * hl - 0.5 * mline - 0.12 * rim
+    rgb = np.clip(base[None, None, :] * (1 + 0.55 * shade[..., None]), 0, 255).astype(np.uint8)
+
+    out = np.zeros((H, W, 4), np.uint8)
+    out[..., :3] = rgb
+    out[..., 3] = np.where(mask, 255, 0)
+    im = Image.fromarray(out, "RGBA").resize((w, h), Image.LANCZOS)
     arr = np.asarray(im)
-    return arr[..., :3].copy(), arr[..., 3] > 128
+    rgb_s = arr[..., :3].astype(float)
+    al = arr[..., 3].astype(float) / 255.0      # resize で縁が羽化される
+    rgb_s[al < 0.5] = BG                          # 唇外は背景色
+    return rgb_s.astype(np.uint8), al
+
+
+def _read_rgba(path):
+    """RGBA PNG → (rgb_uint8, alpha 0-1)。α 無しは全面=唇(1.0)。"""
+    arr = np.asarray(Image.open(path).convert("RGBA"))
+    al = arr[..., 3].astype(float) / 255.0
+    if al.max() <= 0:
+        al = np.ones(arr.shape[:2])
+    return arr[..., :3].copy(), al
+
+
+def lip_image_source(preset_name):
+    """この preset で使う唇画像のソース種別を返す: 'preset'|'model'|'dummy'。"""
+    if os.path.exists(os.path.join(ASSETS_LIPS, f"lip_{preset_name}.png")):
+        return "preset"
+    if os.path.exists(os.path.join(ASSETS_LIPS, "model.png")):
+        return "model"
+    return "dummy"
 
 
 def load_lip_image(preset_name):
-    """唇プリセット名 → (rgb_uint8, mask)。assets 優先、無ければダミー。"""
-    path = os.path.join(ASSETS_LIPS, f"lip_{preset_name}.png")
-    if os.path.exists(path):
-        im = Image.open(path).convert("RGBA")
-        arr = np.asarray(im)
-        if arr[..., 3].max() > 0:          # α があれば唇マスクに使う
-            return arr[..., :3].copy(), arr[..., 3] > 128
-        return arr[..., :3].copy(), np.ones(arr.shape[:2], bool)  # 全面=唇とみなす
+    """唇プリセット名 → (rgb_uint8, alpha 0-1)。
+
+    優先: assets/lips/lip_<preset>.png(プリセット個別) > model.png(全プリセット共用の
+    実写モデル) > ダミー生成。実写では α=唇マスク(羽化済み)。
+    """
+    src = lip_image_source(preset_name)
+    if src == "preset":
+        return _read_rgba(os.path.join(ASSETS_LIPS, f"lip_{preset_name}.png"))
+    if src == "model":
+        return _read_rgba(os.path.join(ASSETS_LIPS, "model.png"))
     return _dummy_lip(preset_name)
 
 
 # ============ 色合成(唇領域に applied_lab を乗せる) ============
 
-def composite_lip(rgb_uint8, mask, applied_lab, l_blend=0.5):
-    """唇領域を applied_lab で塗る。
+def composite_lip(rgb_uint8, alpha, applied_lab, l_blend=0.5):
+    """唇に applied_lab を塗る(顔・周辺はそのまま残す)。
 
-    L は元画像と applied_lab を (1-l_blend):l_blend でブレンド(陰影/質感を残す)、
-    a,b は applied_lab で置換。非マスク領域は表示用に背景色で塗る。
+    全画素を Lab で「L は元と applied_lab を (1-l_blend):l_blend ブレンド(陰影/質感を
+    残す)、a,b は applied_lab で置換」して再着色し、α(唇マスク, 0-1)で元画像と合成する。
+    α が羽化されているので唇の縁が自然に馴染む。
     """
-    lab = skcolor.rgb2lab(rgb_uint8.astype(float) / 255.0)
-    out = lab.copy()
+    base = rgb_uint8.astype(float) / 255.0
+    lab = skcolor.rgb2lab(base)
+    rec = lab.copy()
     L, a, b = float(applied_lab[0]), float(applied_lab[1]), float(applied_lab[2])
-    out[..., 0] = np.where(mask, (1 - l_blend) * lab[..., 0] + l_blend * L, lab[..., 0])
-    out[..., 1] = np.where(mask, a, lab[..., 1])
-    out[..., 2] = np.where(mask, b, lab[..., 2])
-    rgb = (np.clip(skcolor.lab2rgb(out), 0, 1) * 255).astype(np.uint8)
-    rgb[~mask] = BG
-    return rgb
+    rec[..., 0] = (1 - l_blend) * lab[..., 0] + l_blend * L
+    rec[..., 1] = a
+    rec[..., 2] = b
+    rec_rgb = np.clip(skcolor.lab2rgb(rec), 0, 1)
+    a3 = np.clip(alpha, 0.0, 1.0)[..., None]
+    out = rec_rgb * a3 + base * (1 - a3)
+    return (out * 255).astype(np.uint8)
 
 
 # ============ Streamlit ============
@@ -139,10 +196,13 @@ def main():
         run = st.button("レコメンド", type="primary", use_container_width=True)
 
     # 選択中の唇画像(プレビュー)
-    lip_rgb, lip_mask = load_lip_image(lip_key)
-    src = "assets" if os.path.exists(os.path.join(ASSETS_LIPS, f"lip_{lip_key}.png")) else "ダミー生成"
+    lip_rgb, lip_alpha = load_lip_image(lip_key)
+    src_label = {"preset": "プリセット実写", "model": "実写モデル(共用)",
+                 "dummy": "ダミー生成"}[lip_image_source(lip_key)]
     with st.sidebar:
-        st.image(lip_rgb, caption=f"唇画像: {lip_key}({src})", use_container_width=True)
+        st.image(lip_rgb, caption=f"唇画像: {src_label}", use_container_width=True)
+        if lip_image_source(lip_key) == "model":
+            st.caption(MODEL_CREDIT)
 
     if not run:
         st.info("← サイドバーで唇の色を選んで「レコメンド」を押してください。")
@@ -173,7 +233,7 @@ def main():
     for i, it in enumerate(data["results"]):
         appl = [it["applied_lab"]["L"], it["applied_lab"]["a"], it["applied_lab"]["b"]]
         orig = [it["original_lab"]["L"], it["original_lab"]["a"], it["original_lab"]["b"]]
-        comp = composite_lip(lip_rgb, lip_mask, appl, l_blend=l_blend)
+        comp = composite_lip(lip_rgb, lip_alpha, appl, l_blend=l_blend)
         with cols[i % len(cols)]:
             st.image(comp, use_container_width=True)
             st.markdown(f"**{i+1}. {it['name']}**")
