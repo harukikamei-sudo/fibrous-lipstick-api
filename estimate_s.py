@@ -17,13 +17,13 @@ S について解けばよい。R は S に対し単調なので brentq で安�
 """
 
 import numpy as np
-from scipy.optimize import brentq
+from scipy.optimize import brentq, least_squares
 
-from lab_utils import lab_to_reflectance
+from lab_utils import lab_to_reflectance, reflectance_to_lab
 import km
 
 
-__all__ = ["estimate_s", "estimate_s_scalar"]
+__all__ = ["estimate_s", "estimate_s_scalar", "estimate_s_layered"]
 
 # S の探索上限。S·t_light が大きいと R は R∞ に張り付くので、この辺で頭打ち
 _S_MAX = 1.0e4
@@ -175,4 +175,113 @@ def estimate_s_scalar(full_lab, light_lab, t_light=0.3, substrate_lab=None,
         status = "out_of_range"
         note += f"（S={s_scalar:.1f} が妥当域{list(s_valid)}外、要確認）"
     result.update(s=round(s_scalar, 3), status=status, note=note)
+    return result
+
+
+# ============ 3 点フィット(素肌+1度+2度 → K/S と S を同時推定) ============
+#
+# 「2度塗り=R∞(完全不透明)」を仮定せず、素肌(下地)と 2 つの厚みの観測から
+# チャネル毎に (K/S, u1=S·t1) を least_squares でフィットする。シアーなティント
+# (何度塗っても不透明にならない)でも、真の K/S と S が分離して求まる。
+#
+# 識別性: K-M は S·t しか効かないので、1度塗りの厚み t1 は規約で固定する
+# (既定 0.3)。2度塗りは t2 = coat_ratio·t1(既定 2 倍)と仮定。これで
+# チャネル毎に 2 観測・2 未知(K/S, u1)となり解ける。S = u1 / t1。
+
+def _R_of_u(ks, u, r_g):
+    """K-M 反射率を S·t = u(スカラー)として 1 チャネル分だけ返す。"""
+    return float(km.km_reflectance(np.array([ks], dtype=float), float(u),
+                                   1.0, np.array([r_g], dtype=float))[0])
+
+
+def _fit_channel_layered(r_sub, r1, r2, coat_ratio):
+    """1 チャネル: (K/S, u1) を 2 観測 R1=R(u1), R2=R(coat_ratio·u1) からフィット。
+
+    Returns: (ks, u1, rmse)
+    """
+    # 初期値: K/S は 2度 を R∞ とみなした近似、u1 は 1
+    ks0 = float(km._ks_from_reflectance(np.array([r2]))[0])
+
+    def resid(theta):
+        ks, u1 = theta
+        return [_R_of_u(ks, u1, r_sub) - r1,
+                _R_of_u(ks, coat_ratio * u1, r_sub) - r2]
+
+    res = least_squares(resid, x0=[max(ks0, 1e-3), 1.0],
+                        bounds=([1e-4, 1e-4], [1e3, 1e3]), max_nfev=3000)
+    rmse = float(np.sqrt(np.mean(np.square(res.fun))))
+    return float(res.x[0]), float(res.x[1]), rmse
+
+
+def estimate_s_layered(substrate_lab, coat1_lab, coat2_lab, t1=0.3,
+                       coat_ratio=2.0, dr_min=0.03, rmse_max=0.02,
+                       s_valid=(0.05, 5.0)):
+    """素肌 + 1度塗り + 2度塗り の 3 点から、ライン S(単一スカラー)を推定する。
+
+    R∞ 仮定なしでチャネル毎に (K/S, u1=S·t1) をフィット。採用ゲートを通った
+    チャネルの S=u1/t1 の中央値を単一スカラー S とする。フィット由来の K/S から
+    各チャネルの真の R∞(=a-b)も復元して「フル発色色」として返す。
+
+    Args:
+        substrate_lab/coat1_lab/coat2_lab: 素肌 / 1度 / 2度 の Lab(shape (3,))
+        t1: 1度塗りの厚み(規約固定値, 既定 0.3)
+        coat_ratio: 2度塗りの厚み倍率(既定 2.0)
+        dr_min: 各塗り段階の反射率差しきい値(既定 0.03)
+        rmse_max: フィット残差(反射率)の上限。超えたら不採用(既定 0.02)
+        s_valid: 妥当な S の範囲(min, max)。外れたら out_of_range 警告。
+
+    Returns: dict {
+        "s": float|None, "per_channel_s","per_channel_ks","rmse": [3 floats],
+        "adopted":[3 bools], "n_adopted":int,
+        "rinf_lab":[L,a,b],   # フィット K/S から復元したフル発色(R∞)
+        "t1","coat_ratio","dr_min": echo,
+        "status": "ok"|"out_of_range"|"insufficient", "note": str,
+    }
+    """
+    r_sub = np.asarray(lab_to_reflectance(substrate_lab), dtype=float)
+    r1 = np.asarray(lab_to_reflectance(coat1_lab), dtype=float)
+    r2 = np.asarray(lab_to_reflectance(coat2_lab), dtype=float)
+
+    ks_ch, u1_ch, s_ch, rmse_ch, adopted = [], [], [], [], []
+    for c in range(3):
+        ks, u1, rmse = _fit_channel_layered(float(r_sub[c]), float(r1[c]),
+                                            float(r2[c]), coat_ratio)
+        ks_ch.append(ks); u1_ch.append(u1); s_ch.append(u1 / t1); rmse_ch.append(rmse)
+        # ゲート: 単調(素肌→1度→2度) & 各段階が情報あり & フィット良好
+        lo, hi = sorted((r_sub[c], r2[c]))
+        mono = (lo - 0.01) <= r1[c] <= (hi + 0.01)
+        informative = abs(r2[c] - r1[c]) >= dr_min and abs(r1[c] - r_sub[c]) >= dr_min
+        adopted.append(bool(mono and informative and rmse < rmse_max))
+
+    adopted = np.array(adopted)
+    s_arr = np.array(s_ch)
+
+    # フィット K/S から R∞(=a-b)を全ch復元 → フル発色色
+    a = 1.0 + np.array(ks_ch)
+    b = np.sqrt(np.maximum(a * a - 1.0, 0.0))
+    rinf = np.clip(a - b, 0.0, 1.0)
+    rinf_lab = reflectance_to_lab(rinf)
+
+    result = {
+        "per_channel_s": [round(float(v), 4) for v in s_arr],
+        "per_channel_ks": [round(float(v), 4) for v in ks_ch],
+        "rmse": [round(float(v), 4) for v in rmse_ch],
+        "adopted": [bool(x) for x in adopted],
+        "n_adopted": int(adopted.sum()),
+        "rinf_lab": [round(float(v), 2) for v in rinf_lab],
+        "t1": t1, "coat_ratio": coat_ratio, "dr_min": dr_min,
+    }
+
+    if not adopted.any():
+        result.update(s=None, status="insufficient",
+                      note="採用ch ゼロ(非単調/情報不足/フィット不良)。"
+                           "淡い色・照明の揃った塗り重ね画像で取り直す")
+        return result
+
+    s_scalar = float(np.median(s_arr[adopted]))
+    status, note = "ok", f"{int(adopted.sum())}/3 ch 採用 → median S"
+    if not (s_valid[0] <= s_scalar <= s_valid[1]):
+        status = "out_of_range"
+        note += f"（S={s_scalar:.2f} が妥当域{list(s_valid)}外、要確認）"
+    result.update(s=round(s_scalar, 4), status=status, note=note)
     return result

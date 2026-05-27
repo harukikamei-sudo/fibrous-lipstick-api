@@ -13,7 +13,7 @@ import numpy as np
 
 from lab_utils import lab_to_reflectance, reflectance_to_lab
 import km
-from estimate_s import estimate_s, estimate_s_scalar
+from estimate_s import estimate_s, estimate_s_scalar, estimate_s_layered
 
 
 def deltaE_76(lab1, lab2):
@@ -259,6 +259,52 @@ def test_estimate_s_scalar():
     return fails
 
 
+def test_estimate_s_layered():
+    """3点フィット(案A): K/S と S を同時推定、R∞ 仮定なし。"""
+    print("\n性質8: estimate_s_layered(素肌+1度+2度 → K/S,S 同時フィット)")
+    fails = []
+    t1, ratio = 0.3, 2.0
+    sub_lab = np.array([92.0, 0.0, 1.0])     # ほぼ白基板
+    r_sub = lab_to_reflectance(sub_lab)
+
+    def make_coats(ks_true, s_true):
+        r1 = km.km_reflectance(ks_true, np.full(3, s_true), t1, r_sub)
+        r2 = km.km_reflectance(ks_true, np.full(3, s_true), ratio * t1, r_sub)
+        return reflectance_to_lab(r1), reflectance_to_lab(r2)
+
+    # (1) 既知 ks,S を合成 → 復元
+    ks_true = np.array([1.0, 1.5, 2.0])
+    s_true = 1.5
+    c1, c2 = make_coats(ks_true, s_true)
+    r = estimate_s_layered(sub_lab, c1, c2, t1=t1, coat_ratio=ratio,
+                           dr_min=0.03, s_valid=(0.05, 5.0))
+    ks_ok = np.allclose(r["per_channel_ks"], ks_true, rtol=0.1)
+    s_ok = r["s"] is not None and abs(r["s"] - s_true) / s_true < 0.1
+    ok = ks_ok and s_ok and r["n_adopted"] >= 2
+    print(f"  [{'OK' if ok else 'NG'}] 復元: ks={r['per_channel_ks']}(true {ks_true.tolist()}) "
+          f"S={r['s']}(true {s_true}) 採用{r['n_adopted']}/3")
+    if not ok: fails.append(("復元", r))
+
+    # (2) フル塗りで R∞(=商品色)へ寄るか
+    s = r["s"]; ks = np.array(r["per_channel_ks"]); rinf = np.array(r["rinf_lab"])
+    applied_full = km.compute_applied_lab(sub_lab, ks, np.full(3, s), 16 * t1)
+    dE_full = deltaE_76(applied_full, rinf)
+    dE_sub = deltaE_76(applied_full, sub_lab)
+    ok2 = dE_full < 3.0 and dE_sub > 15.0
+    print(f"  [{'OK' if ok2 else 'NG'}] フル塗り(16回): ΔE(R∞)={dE_full:.1f}(<3) "
+          f"ΔE(素肌)={dE_sub:.1f}(>15) → R∞へ寄る")
+    if not ok2: fails.append(("フル塗り収束", dE_full, dE_sub))
+
+    # (3) 非単調(照明ムラ)chは除外
+    c1_bad = reflectance_to_lab(np.array([0.99, *lab_to_reflectance(c1)[1:]]))  # R chを素肌より明
+    r3 = estimate_s_layered(sub_lab, c1_bad, c2, t1=t1, coat_ratio=ratio, dr_min=0.03)
+    ok3 = r3["adopted"][0] is False
+    print(f"  [{'OK' if ok3 else 'NG'}] 非単調除外: 採用ch={r3['adopted']}")
+    if not ok3: fails.append(("非単調除外", r3))
+
+    return fails
+
+
 def main():
     all_fails = []
     all_fails += test_t0_is_lip()
@@ -268,6 +314,7 @@ def main():
     all_fails += test_compute_km_table()
     all_fails += test_resolve_line_s()
     all_fails += test_estimate_s_scalar()
+    all_fails += test_estimate_s_layered()
 
     print()
     if all_fails:
