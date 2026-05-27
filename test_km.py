@@ -198,14 +198,28 @@ def test_resolve_line_s():
         if not ok:
             fails.append((lid, lcat, s, src))
 
-    # プリセットの大小関係: gloss < tint < velvet < matte(透け→隠蔽)
-    order = ["gloss", "tint", "velvet", "matte"]
-    s_vals = [km.LINE_S_PRESETS[c][0] for c in order]
-    ok_order = all(s_vals[i] < s_vals[i + 1] for i in range(len(s_vals) - 1))
-    mark = "OK" if ok_order else "NG"
-    print(f"  [{mark}] プリセット S 単調増加 {dict(zip(order, s_vals))}")
-    if not ok_order:
-        fails.append("preset order")
+    # 全カテゴリのプリセットが正の値で揃っているか
+    # (旧: gloss<tint<velvet<matte の単調性。tint が実測校正 0.4 になり
+    #  暫定値 gloss=1.0 を下回ったため、単調性はもう不変条件ではない)
+    cats = ["gloss", "tint", "velvet", "matte", "other"]
+    s_vals = {c: km.LINE_S_PRESETS[c][0] for c in cats}
+    ok_pos = all(v > 0 for v in s_vals.values())
+    mark = "OK" if ok_pos else "NG"
+    print(f"  [{mark}] プリセット S が全て正 {s_vals}")
+    if not ok_pos:
+        fails.append("preset positive")
+
+    # classify_line_category: rom&nd ラインの分類
+    cls_cases = [("zero_velvet", "velvet"), ("juicy_lasting", "tint"),
+                 ("blur_fudge", "matte"), ("glasting_water", "gloss"),
+                 ("dewyful", "gloss"), ("bare_mool", "other"), ("", "other")]
+    for lid, exp in cls_cases:
+        got = km.classify_line_category(lid)
+        ok = got == exp
+        mark = "OK" if ok else "NG"
+        print(f"  [{mark}] classify('{lid}')={got} (exp {exp})")
+        if not ok:
+            fails.append(("classify", lid, got))
     return fails
 
 

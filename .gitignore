@@ -5,6 +5,7 @@ images_cache/
 thumbnails/
 *.csv
 !products.csv
+!products_with_lab.csv
 *.xlsx
 .DS_Store
 

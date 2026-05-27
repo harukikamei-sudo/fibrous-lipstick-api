@@ -9,12 +9,16 @@
   POST /compute_km_table       — K-M 計算。2 モード:
                                    単品 (product_lab + line_category) /
                                    バッチ (products[+lines]) → 厚み21段の applied Lab
+  POST /recommend              — 唇色 → 全商品 applied_lab → ΔE で TOP5 推薦
 
 ローカル起動:
   uvicorn app:app --reload
 """
 
+import csv
 import ipaddress
+import math
+import os
 import socket
 from io import BytesIO
 from typing import Dict, List, Literal, Optional
@@ -36,6 +40,37 @@ import km  # 雛形
 MAX_BATCH_SIZE = 50
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
 REQUEST_TIMEOUT_SEC = 30
+
+# /recommend 用の商品カタログ(Lab 抽出済み)
+CATALOG_PATH = os.path.join(os.path.dirname(__file__), "products_with_lab.csv")
+
+
+def _load_catalog() -> List[Dict]:
+    """products_with_lab.csv を読み、Lab 抽出済み(非 excluded)の商品リストを返す。"""
+    items: List[Dict] = []
+    if not os.path.exists(CATALOG_PATH):
+        return items
+    with open(CATALOG_PATH, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row.get("status") == "excluded":
+                continue
+            try:
+                lab = (float(row["L"]), float(row["a"]), float(row["b"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+            line_id = row.get("line_id", "")
+            items.append({
+                "id": row.get("id", ""),
+                "name": row.get("color_name", ""),
+                "line_id": line_id,
+                "line_category": row.get("line_category")
+                or km.classify_line_category(line_id),
+                "lab": lab,
+            })
+    return items
+
+
+CATALOG = _load_catalog()
 
 
 app = FastAPI(title="Fibrous Lipstick API", version="0.1.0")
@@ -158,6 +193,39 @@ class ComputeKmTableResponse(BaseModel):
         ...,
         description="各商品 {id, line_id, s, s_source, applied:[{t,L,a,b}, …]}",
     )
+
+
+# ---- /recommend ----
+
+class RecommendRequest(BaseModel):
+    lip_lab: LabValue = Field(..., description="唇地肌の Lab(下地)")
+    t: float = Field(1.0, gt=0.0, le=5.0, description="塗り厚 t(塗り重ね量)")
+    target_lab: Optional[LabValue] = Field(
+        None, description="並べ替えの目標色。省略時は lip_lab(=最も自然/唇寄り)"
+    )
+    line_category: Optional[LineCategory] = Field(
+        None, description="仕上げタイプで絞り込み"
+    )
+    hue_min: Optional[float] = Field(None, description="applied の色相下限(0-360°)")
+    hue_max: Optional[float] = Field(None, description="applied の色相上限(0-360°)")
+    L_min: Optional[float] = Field(None, description="applied の明度下限")
+    L_max: Optional[float] = Field(None, description="applied の明度上限")
+    top_n: int = Field(5, ge=1, le=50, description="返す件数")
+
+
+class RecommendItem(BaseModel):
+    id: str
+    name: str
+    line_category: str
+    original_lab: LabValue = Field(..., description="商品本来の発色 Lab")
+    applied_lab: LabValue = Field(..., description="唇に厚み t で塗った後の Lab")
+    delta_e: float = Field(..., description="目標色との ΔE(CIE76)")
+
+
+class RecommendResponse(BaseModel):
+    count: int = Field(..., description="フィルタ後の候補数")
+    sort_target: LabValue = Field(..., description="並べ替えに使った目標色")
+    results: List[RecommendItem]
 
 
 # ============ Helpers ============
@@ -283,7 +351,9 @@ def root():
             "/extract_lab_batch",
             "/estimate_s",
             "/compute_km_table",
+            "/recommend",
         ],
+        "catalog_size": len(CATALOG),
     }
 
 
@@ -372,3 +442,67 @@ def compute_km_table_endpoint(req: ComputeKmTableRequest):
     except (ValueError, TypeError, KeyError) as e:
         raise HTTPException(status_code=422, detail=f"K-M 計算エラー: {e}")
     return ComputeKmTableResponse(mode=mode, table=table)
+
+
+def _hue_deg(a: float, b: float) -> float:
+    return math.degrees(math.atan2(b, a)) % 360.0
+
+
+def _hue_in_range(h: float, lo: Optional[float], hi: Optional[float]) -> bool:
+    if lo is None and hi is None:
+        return True
+    lo = 0.0 if lo is None else lo
+    hi = 360.0 if hi is None else hi
+    if lo <= hi:
+        return lo <= h <= hi
+    return h >= lo or h <= hi  # 0°をまたぐ範囲(例 330〜30)
+
+
+@app.post("/recommend", response_model=RecommendResponse)
+def recommend_endpoint(req: RecommendRequest):
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+
+    lip = [req.lip_lab.L, req.lip_lab.a, req.lip_lab.b]
+    target = (
+        [req.target_lab.L, req.target_lab.a, req.target_lab.b]
+        if req.target_lab is not None else lip
+    )
+
+    scored = []
+    for p in CATALOG:
+        if req.line_category and p["line_category"] != req.line_category:
+            continue
+        ks = km.ks_from_lab(p["lab"])
+        s, _ = km.resolve_line_s(line_id=p["line_id"],
+                                 line_category=p["line_category"])
+        applied = km.compute_applied_lab(lip, ks, s, req.t)
+        aL, aa, ab = float(applied[0]), float(applied[1]), float(applied[2])
+
+        # applied への色相 / 明度フィルタ
+        if not _hue_in_range(_hue_deg(aa, ab), req.hue_min, req.hue_max):
+            continue
+        if req.L_min is not None and aL < req.L_min:
+            continue
+        if req.L_max is not None and aL > req.L_max:
+            continue
+
+        dE = math.sqrt((aL - target[0]) ** 2 + (aa - target[1]) ** 2
+                       + (ab - target[2]) ** 2)
+        scored.append((dE, p, (aL, aa, ab)))
+
+    scored.sort(key=lambda x: x[0])
+    results = [
+        RecommendItem(
+            id=p["id"], name=p["name"], line_category=p["line_category"],
+            original_lab=LabValue(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
+            applied_lab=LabValue(L=round(aL, 2), a=round(aa, 2), b=round(ab, 2)),
+            delta_e=round(dE, 2),
+        )
+        for dE, p, (aL, aa, ab) in scored[:req.top_n]
+    ]
+    return RecommendResponse(
+        count=len(scored),
+        sort_target=LabValue(L=target[0], a=target[1], b=target[2]),
+        results=results,
+    )

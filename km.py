@@ -37,30 +37,60 @@ __all__ = [
     "compute_applied_lab",
     "compute_km_table",
     "LINE_S_PRESETS",
+    "LINE_CATEGORIES",
+    "classify_line_category",
     "resolve_line_s",
+    "LIP_PRESETS",
 ]
 
 # 仕上げタイプ → ライン散乱係数 S(各チャネル共通)のプリセット。
 #
 # K-M では S·t が大きいほど不透明(R→R∞)、小さいほど下地が透ける。
-# よって 透け感の強い順 gloss < tint < velvet < matte で S を大きくする
-# (大小関係はこの順で固定)。
+# 透け感の強い順 gloss < tint < velvet < matte が大小関係(固定)。
 #
-# ※ 絶対値は t のスケールと結合している点に注意。本実装は t∈[0,1] を
-#   t_steps 分割するので、S は O(1〜10) でないと t=0.05 付近で即飽和し
-#   21 段階が階段関数に潰れる(matte=200 等は不可)。下記は t∈[0,1] で
-#   滑らかなグラデーションになる暫定スケール。薄付きスウォッチが集まれば
-#   estimate_s で実測 S に置き換える。
+# ※ tint は実測校正値(estimate_s_layered, コーラル juicy_lasting → S≈0.42)。
+#   他 3 つは未校正の暫定値で、薄付き画像が集まり次第 0.1〜1 オーダーに更新予定
+#   (実測スケールは旧仮定 1〜8 より 10〜20 倍小さいことが判明している)。
+#   絶対値は t のスケールと結合する点に注意(t∈[0,1] を t_steps 分割)。
 LINE_S_PRESETS = {
-    "gloss":  [1.0, 1.0, 1.0],   # 艶・透け感 最大(最も下地が透ける)
-    "tint":   [2.0, 2.0, 2.0],   # 染めつき・シアー
-    "velvet": [4.0, 4.0, 4.0],   # 半不透明・ソフトマット
-    "matte":  [8.0, 8.0, 8.0],   # 不透明・フルカバー
+    "gloss":  [1.0, 1.0, 1.0],   # 艶・透け感 最大(未校正の暫定値)
+    "tint":   [0.4, 0.4, 0.4],   # ★実測校正 S≈0.42(コーラル juicy_lasting)
+    "velvet": [4.0, 4.0, 4.0],   # 半不透明(未校正の暫定値)
+    "matte":  [8.0, 8.0, 8.0],   # 不透明・フルカバー(未校正の暫定値)
     "other":  [3.0, 3.0, 3.0],   # 不明・その他のフォールバック
 }
 
-# line_id 文字列からカテゴリを推定する際に探すキーワード(優先順)
-_LINE_ID_KEYWORDS = ("matte", "velvet", "gloss", "tint")
+# 取りうる仕上げカテゴリ(other はフォールバック)
+LINE_CATEGORIES = ("tint", "matte", "gloss", "velvet", "other")
+
+# line_id 文字列 → カテゴリ推定のキーワード対応(先頭一致優先)。
+# rom&nd のライン名(juicy_lasting, blur_fudge, glasting_water 等)は
+# カテゴリ語を直接含まないので、製品知識ベースの語も入れる。
+_CATEGORY_KEYWORDS = (
+    ("velvet", "velvet"),
+    ("juicy", "tint"),
+    ("tint", "tint"),
+    ("blur", "matte"),
+    ("fudge", "matte"),
+    ("matte", "matte"),
+    ("glasting", "gloss"),
+    ("dewy", "gloss"),
+    ("gloss", "gloss"),
+)
+
+
+def classify_line_category(line_id):
+    """line_id 文字列 → 仕上げカテゴリ(LINE_CATEGORIES のいずれか)。
+
+    キーワードに一つも当たらなければ "other"。
+    """
+    if not line_id:
+        return "other"
+    low = str(line_id).lower()
+    for kw, cat in _CATEGORY_KEYWORDS:
+        if kw in low:
+            return cat
+    return "other"
 
 
 def resolve_line_s(lines=None, line_id=None, line_category=None):
@@ -68,7 +98,7 @@ def resolve_line_s(lines=None, line_id=None, line_category=None):
 
       1. lines[line_id] が存在すればそれ(呼び出し側が明示した S)
       2. line_category が LINE_S_PRESETS にあればそのプリセット
-      3. line_id 内にカテゴリ語(velvet 等)があれば推定プリセット
+      3. line_id から classify_line_category で推定したプリセット
       4. いずれも該当しなければ "other" のフォールバック
 
     Returns:
@@ -79,11 +109,20 @@ def resolve_line_s(lines=None, line_id=None, line_category=None):
     if line_category and line_category in LINE_S_PRESETS:
         return list(LINE_S_PRESETS[line_category]), f"category:{line_category}"
     if line_id:
-        low = str(line_id).lower()
-        for cat in _LINE_ID_KEYWORDS:
-            if cat in low:
-                return list(LINE_S_PRESETS[cat]), f"line_id~{cat}"
+        cat = classify_line_category(line_id)
+        if cat != "other":
+            return list(LINE_S_PRESETS[cat]), f"line_id~{cat}"
     return list(LINE_S_PRESETS["other"]), "default"
+
+
+# 唇地肌の代表色プリセット(bare lip の Lab)。/recommend 等で下地として使う。
+LIP_PRESETS = {
+    "pale_pink":    [70.0, 16.0,  9.0],   # 淡いピンク
+    "healthy_pink": [62.0, 22.0, 12.0],   # 健康的なピンク
+    "reddish":      [54.0, 28.0, 14.0],   # やや赤め
+    "beige":        [64.0, 13.0, 17.0],   # ベージュ寄り
+    "dark":         [44.0, 21.0, 13.0],   # 暗め
+}
 
 # 反射率を (EPS, 1-EPS) に収めて 0/1 での発散を避ける
 EPS = 1e-6

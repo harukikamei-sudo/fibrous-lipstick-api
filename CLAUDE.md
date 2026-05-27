@@ -42,8 +42,10 @@ fibrous-lipstick-api/
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)
-├── products.csv       入力データ (145 商品、id + image_url 等)
-├── products_with_lab.csv  CLI 実行結果 (gitignore対象だが手元には残る)
+├── products.csv       入力データ (145 商品、id + image_url + line_category 列)
+├── products_with_lab.csv  ★Lab 抽出済みカタログ。/recommend が起動時にロード。
+│                      line_category 列付き。git 追跡(本番 HF に同梱)
+│                      ※line_category は km.classify_line_category で付与(専用スクリプト無し)
 ├── thumbnails/        抽出色チップ可視化サムネ (gitignore)
 ├── images_cache/      画像 DL キャッシュ (gitignore)
 ├── Dockerfile         python:3.11-slim + libgl1 + 7860
@@ -130,10 +132,22 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
   … 145 商品を 1 回で計算。UI 実装の本線。lines 省略時はプリセットへフォールバック。
 - レスポンス: `{mode, table:[{id, line_id, s, s_source, applied:[{t,L,a,b}]}]}`
 
-**`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: gloss=1 < tint=2 < velvet=4 < matte=8。
-透け感が強いほど S 小。**絶対値は t∈[0,1] スケールと結合**しており、S を大きく
-(例 matte=200)すると t=0.05 で即飽和し 21 段階が階段関数に潰れるので O(1〜10) に。
-暫定値で、薄付きスウォッチが集まれば estimate_s で実測 S に置換予定。
+**`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: **tint=0.4(★実測校正済)**、
+gloss=1 / velvet=4 / matte=8(未校正の暫定値)、other=3。tint だけ実測が入ったため
+単調性(gloss<tint…)はもう不変条件ではない。残り 3 つは塗り重ね画像が集まり次第
+0.1〜1 オーダーに更新予定(実測スケールは旧仮定 1〜8 より 10〜20 倍小さい)。
+**`classify_line_category(line_id)`**: line_id → 5 値(tint/matte/gloss/velvet/other)。
+キーワード対応(juicy→tint, blur/fudge→matte, glasting/dewy→gloss, velvet→velvet)。
+products.csv / products_with_lab.csv の line_category 列、resolve_line_s、/recommend
+が共通で使う。bare_mool は該当語なし → other。
+**`LIP_PRESETS`(km.py)**: 唇地肌の代表色 Lab 5 種
+(pale_pink / healthy_pink / reddish / beige / dark)。/recommend の下地などに使う。
+
+**`/recommend`(app.py, Phase4)**: 唇色 → 全カタログ商品の applied_lab を計算 →
+目標色との ΔE(CIE76)昇順で TOP_n。`{lip_lab, t=1.0, target_lab?(省略時=lip_lab),
+line_category?, hue_min/max?, L_min/max?, top_n=5}` → `{count, sort_target,
+results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}`。
+カタログは起動時に products_with_lab.csv からロード(status=excluded と Lab 無しは除外)。
 - **物理的限界(重要)**: K/S が大きい暗・高彩度チャネルは薄付きでも完全不透明
   (R が R∞ に張り付く)になり、S が観測色に反映されず逆算不能。これは情報損失
   でありバグではない。test_km.py は「自己整合性(全ch)＋感度chのS復元」で検証。
@@ -170,6 +184,8 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
 | refactor | classify_status を CLI/API で一本化 | ✅ 完了 |
 | 6 | GAS sample_gas.gs | ✅ 参考実装あり、ユーザーが自前で書く予定 |
 | 7 | K-M 本実装 (km/estimate_s + /estimate_s,/compute_km_table の501解除) | ✅ 完了 (TestClient で疎通確認、全テスト通過) |
+| 7.5 | S校正基盤 (estimate_s_scalar/_layered + sample_lab CLI) | ✅ 完了 (tint S≈0.4 実測、3点フィット実証) |
+| 4 | /recommend(唇色→全商品applied→ΔE TOP5) + line_category + LIP_PRESETS | ✅ 完了 (catalog140件、TestClient疎通) |
 
 ## 次回の進め方 / TODO
 
