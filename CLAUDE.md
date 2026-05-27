@@ -33,9 +33,10 @@ fibrous-lipstick-api/
 ├── app.py             FastAPI 本体。SSRF/DoS 対策、CORS、Literal 型
 ├── extract_lab.py     画像 → Lab 抽出ロジック (CLI 兼 API ライブラリ)、classify_status
 ├── lab_utils.py       色空間変換 (RGB↔Lab、Lab↔反射率、HSV)
-├── estimate_s.py      ライン S 逆推定 (NotImplementedError の雛形)
-├── km.py              K-M 計算 (NotImplementedError の雛形)
+├── km.py              ★K-M 本実装。有限層反射率 + K/S 算出 + applied_lab + table
+├── estimate_s.py      ★ライン S 逆推定 (brentq でチャネル毎に数値求解)
 ├── test_lab_utils.py  Lab↔反射率往復テスト (ΔE<1)
+├── test_km.py         ★K-M 性質テスト (t=0で唇/t大で発色/S往復/table)
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)
@@ -89,6 +90,37 @@ MIN_CENTER_VALUE = 30         ← 黒系クラスタ除外用
 sRGB ガンマ補正は可逆なので Lab→反射率→Lab の ΔE は 0.000(浮動小数精度)。
 K-M 計算ではこの各チャネル値を波長帯反射率として扱う想定。
 
+### 5. K-M モデル (km.py / estimate_s.py) ★今回実装
+**有限層 Kubelka-Munk 式**(下地反射率 R_g の上に厚み t の顔料層):
+```
+K/S = (1 - R∞)² / (2 R∞)              # フル発色 = R∞ から商品固有の K/S
+a = 1 + K/S,  b = √(a²-1)
+R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
+```
+- St→0 で R→R_g(膜なし=下地), St→∞ で R→R∞=a-b(無限厚)。間は単調。
+- チャネル = linear sRGB の R/G/B 帯反射率。S はライン共通、K/S は商品ごと。
+- `km.km_reflectance` が forward 本体。`compute_applied_lab` は唇 Lab を R_g に。
+- `compute_km_table`: products × lines(省略可) × t_steps。商品ごとの S は
+  `resolve_line_s` の優先順位で解決 → **lines[line_id] > line_category プリセット
+  > line_id キーワード推定(velvet 等) > "other" default**。
+- `estimate_s`: full(R∞)+light の 2 点から S をチャネル毎に brentq 求解。
+  薄付き観測時の下地は `substrate_lab`(省略時 白基板 R_g≈1)。
+
+**`/compute_km_table` は 2 モード(model_validator で片方のみ必須)**:
+- 単品: `{lip_lab, product_lab, line_category}` … Swagger デモ/個別呼び出し向け
+- バッチ: `{lip_lab, products:[{id,L,a,b,line_id?,line_category?,k_s?}], lines?}`
+  … 145 商品を 1 回で計算。UI 実装の本線。lines 省略時はプリセットへフォールバック。
+- レスポンス: `{mode, table:[{id, line_id, s, s_source, applied:[{t,L,a,b}]}]}`
+
+**`LINE_S_PRESETS`(仕上げタイプ→S、km.py)**: gloss=1 < tint=2 < velvet=4 < matte=8。
+透け感が強いほど S 小。**絶対値は t∈[0,1] スケールと結合**しており、S を大きく
+(例 matte=200)すると t=0.05 で即飽和し 21 段階が階段関数に潰れるので O(1〜10) に。
+暫定値で、薄付きスウォッチが集まれば estimate_s で実測 S に置換予定。
+- **物理的限界(重要)**: K/S が大きい暗・高彩度チャネルは薄付きでも完全不透明
+  (R が R∞ に張り付く)になり、S が観測色に反映されず逆算不能。これは情報損失
+  でありバグではない。test_km.py は「自己整合性(全ch)＋感度chのS復元」で検証。
+  → 実運用で S を正しく取るには **薄付きスウォッチをかなり薄く(小 t_light)** 撮る必要あり。
+
 ## 既知の問題点
 
 ### 誤抽出が直っていない 3 商品
@@ -119,19 +151,19 @@ K-M 計算ではこの各チャネル値を波長帯反射率として扱う想�
 | security | SSRF/DoS/Batch上限/CORS/Literal 型 | ✅ 完了 |
 | refactor | classify_status を CLI/API で一本化 | ✅ 完了 |
 | 6 | GAS sample_gas.gs | ✅ 参考実装あり、ユーザーが自前で書く予定 |
+| 7 | K-M 本実装 (km/estimate_s + /estimate_s,/compute_km_table の501解除) | ✅ 完了 (TestClient で疎通確認、全テスト通過) |
 
 ## 次回の進め方 / TODO
 
-### A. K-M モデルの本実装 (大本命、PDF の核心)
-- `estimate_s.py` の `estimate_s(full_lab, light_lab, t_light=0.3)` を実装
-  - K-M 式から S(散乱係数)を逆算
-  - 入力: フル発色 Lab、薄付き Lab、薄付き厚み t
-  - 出力: ライン共通の S(各チャネル独立、shape (3,))
-- `km.py` の `compute_applied_lab(lip_lab, product_k_s, line_s, t)` を実装
-  - 唇地肌 + 商品 K/S + ライン S + 厚み t → 重ね塗り後の Lab
-- `km.py` の `compute_km_table(lip_lab, products, lines, t_steps=21)` を実装
-  - ユーザー × 商品 × 厚み 21 段階のテーブル生成
-- API エンドポイントの 501 を解除して動かす
+### A. K-M モデルの本実装 ✅ 完了
+- `estimate_s` / `compute_applied_lab` / `compute_km_table` 実装済み
+- `/estimate_s` `/compute_km_table` の 501 解除済み(pydantic スキーマ付き)
+- **次の追い込み候補**:
+  - 実データで S を推定するための **薄付きスウォッチ画像** を集める or 撮る
+    (現状 S 推定の入力 light_lab が無い。フル発色 Lab は products_with_lab.csv にある)
+  - 薄付きが無い場合の S デフォルト値の決め方(ライン代表値 or 文献値)
+  - estimate_s の t_light を小さく(薄く)した方が暗channelの S が取れる旨を運用に反映
+  - compute_km_table の出力を CSV/JSON で保存するバッチ CLI があると便利
 
 ### B. データ層の追い込み (余力があれば)
 - 誤抽出 3 件の連結成分ベース判定追加

@@ -5,8 +5,10 @@
   GET  /health                 — ヘルスチェック
   POST /extract_lab            — 単発: 画像URL → Lab
   POST /extract_lab_batch      — 一括: products 配列 → Lab 配列
-  POST /estimate_s             — ライン S 推定(雛形、501)
-  POST /compute_km_table       — K-M バッチ計算(雛形、501)
+  POST /estimate_s             — ライン S 逆推定(full+light Lab → S)
+  POST /compute_km_table       — K-M 計算。2 モード:
+                                   単品 (product_lab + line_category) /
+                                   バッチ (products[+lines]) → 厚み21段の applied Lab
 
 ローカル起動:
   uvicorn app:app --reload
@@ -22,7 +24,7 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 import extract_lab as el
 import estimate_s as es  # 雛形
@@ -80,6 +82,82 @@ class ExtractLabBatchRequest(BaseModel):
 
 class ExtractLabBatchResponse(BaseModel):
     results: List[Dict]
+
+
+# ---- K-M 系 ----
+
+class EstimateSRequest(BaseModel):
+    full_lab: LabValue = Field(..., description="フル発色の Lab(R∞ とみなす)")
+    light_lab: LabValue = Field(..., description="t=t_light で観測した薄付き Lab")
+    t_light: float = Field(0.3, gt=0.0, le=1.0, description="薄付きの厚み t")
+    substrate_lab: Optional[LabValue] = Field(
+        None, description="薄付き観測時の下地 Lab。省略時は白基板を仮定"
+    )
+
+
+class EstimateSResponse(BaseModel):
+    s: List[float] = Field(..., description="ライン散乱係数 S(R,G,B チャネル)")
+    k_s: List[float] = Field(..., description="商品 K/S 比(R,G,B チャネル)")
+
+
+LineCategory = Literal["tint", "matte", "gloss", "velvet", "other"]
+
+
+class KmBatchProduct(BaseModel):
+    id: str
+    L: Optional[float] = None
+    a: Optional[float] = None
+    b: Optional[float] = None
+    k_s: Optional[List[float]] = Field(None, description="K/S 比。省略時は L/a/b から算出")
+    line_id: Optional[str] = Field(None, description="lines の参照キー")
+    line_category: Optional[LineCategory] = Field(None, description="S プリセット参照用")
+
+
+class ComputeKmTableRequest(BaseModel):
+    """単品モードとバッチモードの 2 通り。どちらか片方のみ指定する。
+
+    - 単品モード: product_lab + line_category
+    - バッチモード: products(+ 任意で lines)
+    """
+    lip_lab: LabValue = Field(..., description="唇地肌の Lab(下地)")
+
+    # --- 単品モード ---
+    product_lab: Optional[LabValue] = Field(None, description="商品フル発色 Lab(R∞)")
+    line_category: Optional[LineCategory] = Field(None, description="仕上げタイプ")
+
+    # --- バッチモード ---
+    products: Optional[List[KmBatchProduct]] = Field(
+        None, max_length=MAX_BATCH_SIZE, description=f"最大{MAX_BATCH_SIZE}件"
+    )
+    lines: Optional[Dict[str, List[float]]] = Field(
+        None, description="{line_id: [S_R,S_G,S_B]}。省略時はプリセットにフォールバック"
+    )
+
+    t_steps: int = Field(21, ge=2, le=101, description="厚み段階数")
+
+    @model_validator(mode="after")
+    def _exactly_one_mode(self):
+        single = self.product_lab is not None or self.line_category is not None
+        batch = self.products is not None
+        if single and batch:
+            raise ValueError(
+                "単品モード(product_lab/line_category)とバッチモード(products)は併用不可"
+            )
+        if not single and not batch:
+            raise ValueError(
+                "単品モード(product_lab+line_category)かバッチモード(products)のいずれかが必須"
+            )
+        if single and (self.product_lab is None or self.line_category is None):
+            raise ValueError("単品モードでは product_lab と line_category の両方が必須")
+        return self
+
+
+class ComputeKmTableResponse(BaseModel):
+    mode: str = Field(..., description="'single' か 'batch'")
+    table: List[Dict] = Field(
+        ...,
+        description="各商品 {id, line_id, s, s_source, applied:[{t,L,a,b}, …]}",
+    )
 
 
 # ============ Helpers ============
@@ -256,17 +334,41 @@ def extract_lab_batch_endpoint(req: ExtractLabBatchRequest):
     return ExtractLabBatchResponse(results=results)
 
 
-@app.post("/estimate_s")
-def estimate_s_endpoint(req: dict):
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet (phase: estimate_s)",
+@app.post("/estimate_s", response_model=EstimateSResponse)
+def estimate_s_endpoint(req: EstimateSRequest):
+    full = [req.full_lab.L, req.full_lab.a, req.full_lab.b]
+    light = [req.light_lab.L, req.light_lab.a, req.light_lab.b]
+    substrate = (
+        [req.substrate_lab.L, req.substrate_lab.a, req.substrate_lab.b]
+        if req.substrate_lab is not None
+        else None
     )
+    s = es.estimate_s(full, light, t_light=req.t_light, substrate_lab=substrate)
+    k_s = km.ks_from_lab(full)
+    return EstimateSResponse(s=s.tolist(), k_s=k_s.tolist())
 
 
-@app.post("/compute_km_table")
-def compute_km_table_endpoint(req: dict):
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet (phase: compute_km_table)",
-    )
+@app.post("/compute_km_table", response_model=ComputeKmTableResponse)
+def compute_km_table_endpoint(req: ComputeKmTableRequest):
+    lip_lab = [req.lip_lab.L, req.lip_lab.a, req.lip_lab.b]
+
+    if req.products is not None:
+        mode = "batch"
+        products = [p.model_dump(exclude_none=True) for p in req.products]
+    else:
+        mode = "single"
+        products = [{
+            "id": "product",
+            "L": req.product_lab.L,
+            "a": req.product_lab.a,
+            "b": req.product_lab.b,
+            "line_category": req.line_category,
+        }]
+
+    try:
+        table = km.compute_km_table(
+            lip_lab, products, req.lines, t_steps=req.t_steps
+        )
+    except (ValueError, TypeError, KeyError) as e:
+        raise HTTPException(status_code=422, detail=f"K-M 計算エラー: {e}")
+    return ComputeKmTableResponse(mode=mode, table=table)
