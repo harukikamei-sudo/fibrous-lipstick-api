@@ -1,0 +1,6 @@
+# Streamlit UI(ui_app.py)専用。API 本体(requirements.txt)とは分離して
+# HF Space のイメージを太らせない。ローカルで `streamlit run ui_app.py` 用。
+streamlit>=1.30
+requests>=2.32
+numpy>=1.26
+scikit-image>=0.22

@@ -37,8 +37,11 @@ fibrous-lipstick-api/
 ├── estimate_s.py      ★ライン S 逆推定 (brentq でチャネル毎に数値求解)
 ├── test_lab_utils.py  Lab↔反射率往復テスト (ΔE<1)
 ├── test_km.py         ★K-M 性質テスト (t=0で唇/t大で発色/S往復/table)
-├── sample_lab.py      ★校正CLI: 画像の薄/濃/素肌 領域→Lab→estimate_s で S 算出
-│                      (座標モード --thin/--full/--substrate or --gui ドラッグ選択)
+├── sample_lab.py      ★校正CLI: 画像の素肌/1度/2度 領域→Lab→estimate_s_layered
+│                      (座標モード --substrate/--coat1/--coat2 or --gui ドラッグ選択)
+├── ui_app.py          ★Streamlit UI(Lv1): 唇プリセット選択→/recommend→TOP5色チップ
+│                      `pip install -r requirements-ui.txt && streamlit run ui_app.py`
+│                      API 本体とは別依存(requirements-ui.txt)。HF には載せない(ローカル用)
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)
@@ -186,6 +189,7 @@ results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}`。
 | 7 | K-M 本実装 (km/estimate_s + /estimate_s,/compute_km_table の501解除) | ✅ 完了 (TestClient で疎通確認、全テスト通過) |
 | 7.5 | S校正基盤 (estimate_s_scalar/_layered + sample_lab CLI) | ✅ 完了 (tint S≈0.4 実測、3点フィット実証) |
 | 4 | /recommend(唇色→全商品applied→ΔE TOP5) + line_category + LIP_PRESETS | ✅ 完了 (catalog140件、TestClient疎通) |
+| UI-Lv1 | Streamlit ui_app.py(唇プリセット→/recommend→TOP5色チップ) | ✅ 完了 (headless起動確認)。次はLv2=唇画像合成 |
 
 ## 次回の進め方 / TODO
 
