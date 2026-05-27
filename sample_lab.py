@@ -33,7 +33,7 @@ from PIL import Image
 
 from lab_utils import rgb_to_lab, lab_to_rgb
 import km
-from estimate_s import estimate_s
+from estimate_s import estimate_s_scalar
 
 
 # ============ 画像ロード ============
@@ -200,8 +200,8 @@ def select_regions_gui(pil_img):
 
 # ============ S 算出 + 出力 ============
 
-def report(full_lab, thin_lab, sub_lab, t_light):
-    """3 領域の Lab から K/S と S を算出して表示。"""
+def report(full_lab, thin_lab, sub_lab, t_light, dr_min):
+    """3 領域の Lab から K/S と単一スカラー S を算出して表示。"""
     ks = km.ks_from_lab(full_lab)
     print(f"\n商品 K/S(full から): {ks.round(3).tolist()}")
 
@@ -209,14 +209,19 @@ def report(full_lab, thin_lab, sub_lab, t_light):
         print("薄づき(thin)が無いため S は算出できません(full の Lab のみ)。")
         return
 
-    s = estimate_s(full_lab, thin_lab, t_light=t_light, substrate_lab=sub_lab)
-    print(f"推定ライン S (t_light={t_light}, "
-          f"{'素肌下地' if sub_lab is not None else '白基板仮定'}): "
-          f"{s.round(3).tolist()}")
-    # チャネル平均(プリセットは各チャネル共通値で使うため参考に)
-    print(f"  → 3ch 平均 S ≈ {float(np.mean(s)):.2f}  "
-          f"(LINE_S_PRESETS に入れるなら [{np.mean(s):.1f}]×3 が目安)")
-    print("  ※ 暗い/高彩度チャネルは飽和して過小評価されがち。淡い色で校正を。")
+    res = estimate_s_scalar(full_lab, thin_lab, t_light=t_light,
+                            substrate_lab=sub_lab, dr_min=dr_min)
+    print(f"\n=== ライン S 推定 (t_light={t_light} 固定, dr_min={dr_min}, "
+          f"{'素肌下地' if sub_lab is not None else '白基板仮定'}) ===")
+    print(f"  ch別 S    : {res['per_channel_s']}")
+    print(f"  ΔR(full-thin): {res['delta_r']}  (dr_min={dr_min} 未満は除外)")
+    print(f"  採用ch    : {res['adopted']}  ({res['n_adopted']}/3)")
+    if res["s"] is None:
+        print(f"  ⚠️ S: 算出不可 — {res['note']}")
+    else:
+        mark = "⚠️ " if res["status"] != "ok" else ""
+        print(f"  {mark}推定 S(単一スカラー) = {res['s']}   [{res['status']}] {res['note']}")
+        print(f"  → LINE_S_PRESETS に入れるなら [{res['s']}]×3")
 
 
 def main():
@@ -225,7 +230,9 @@ def main():
     ap.add_argument("--thin", type=parse_box, help="薄づき領域 X,Y,W,H")
     ap.add_argument("--full", type=parse_box, help="濃い/フル発色領域 X,Y,W,H")
     ap.add_argument("--substrate", type=parse_box, help="素肌/下地領域 X,Y,W,H")
-    ap.add_argument("--t-light", type=float, default=0.3, help="薄づきの厚み t(既定 0.3)")
+    ap.add_argument("--t-light", type=float, default=0.3, help="薄づきの厚み t(規約固定値, 既定 0.3)")
+    ap.add_argument("--dr-min", type=float, default=0.03,
+                    help="チャネル採用の反射率差しきい値(既定 0.03)")
     ap.add_argument("--gui", action="store_true", help="ドラッグで領域選択(tkinter)")
     ap.add_argument("--info", action="store_true", help="画像寸法を表示して終了")
     ap.add_argument("--preview", help="指定領域を重ねた確認 PNG の保存先")
@@ -268,7 +275,7 @@ def main():
         line, sub_lab = describe(f"substr(n={n})", sub_rgb)
         print(line)
 
-    report(full_lab, thin_lab, sub_lab, args.t_light)
+    report(full_lab, thin_lab, sub_lab, args.t_light, args.dr_min)
 
 
 if __name__ == "__main__":

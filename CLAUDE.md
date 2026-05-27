@@ -107,6 +107,15 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
   > line_id キーワード推定(velvet 等) > "other" default**。
 - `estimate_s`: full(R∞)+light の 2 点から S をチャネル毎に brentq 求解。
   薄付き観測時の下地は `substrate_lab`(省略時 白基板 R_g≈1)。
+- `estimate_s_scalar`: 上の per-ch 推定から **単一スカラー S** を頑健に出す(校正用)。
+  採用ゲート: |R_full - R_thin| < dr_min(既定 0.03)のチャネルは除外
+  (飽和=薄≈フル も 透明=素肌≈フル≈薄 も両方この片側ゲートで捌ける)。
+  残ったチャネルの中央値を S とし、診断(per_channel_s/delta_r/adopted/status)も返す。
+  全飽和なら status="all_saturated"(校正不能)、妥当域外なら "out_of_range" 警告。
+- **S/t 規約(重要・確定)**: K-M は観測に S·t しか効かない=S と t は分離不能(ゲージ
+  自由度)。よって t は **規約で固定**するしかない(データから逆算は原理的に不可)。
+  採用規約: 「**1度塗り = t_light = 0.3 固定**、全校正で共通」。これで異なる画像で
+  出た S が同一スケールで比較可能になる。UI は塗り重ね回数で表示(校正後に t を割当)。
 
 **`/compute_km_table` は 2 モード(model_validator で片方のみ必須)**:
 - 単品: `{lip_lab, product_lab, line_category}` … Swagger デモ/個別呼び出し向け
@@ -169,8 +178,17 @@ R  = [1 - R_g(a - b·coth(bSt))] / [(a - R_g) + b·coth(bSt)]
   - **必要な画像**: 「薄づき + 素肌が同じ写真に写った」スウォッチ。各仕上げ
     (gloss/tint/velvet/matte)で淡い色 1 枚ずつあれば 4 プリセット校正可能。
   - S/t スケール不定性のため t_light は規約固定(0.3)。得るのは相対 S。
-  - **次アクション**: ユーザーが各仕上げの良いスウォッチ画像を数枚用意 → sample_lab.py
-    に投げて S 算出 → km.py の LINE_S_PRESETS を実測値で更新。
+  - **カタログ色分布(調査済み)**: 140/145 で C* 中央値48, 鮮やか(C*≥40) **72%**,
+    ヌード(C*<25) わずか 2%, a*中央43/hue29°=赤コーラル主体。→ **校正は淡い色**で
+    取り(全chが情報を持ちSがクリーンにでるS≈hue非依存)、鮮やか色に適用が正解。
+    鮮やか色は暗chが飽和=t不問でほぼフル発色なので S 精度の影響が小さい(朗報)。
+    カタログ内の淡色は dewyful_16/juicy_lasting_31/dewyful_14 の3件のみ(参照用)。
+  - **A(estimate_s_scalar)完了**。コーラル唇画像で検証 → dr_min=0.03 がノイズの
+    R ch を正しく除外、残1chで out_of_range 警告(=校正不能を正しく検知)。鮮やか
+    +光沢の画像は校正不向きと裏付け。妥当域 10-500 は仮、clean データで確定予定。
+  - **次アクション(B)**: 各仕上げ(gloss/tint/velvet/matte)の **淡い色の塗り重ね画像**
+    (塗る前/1度/2度 が同一条件で写ったもの)を 1 枚ずつ用意 → sample_lab.py に投げ
+    → 出た単一 S で km.py の LINE_S_PRESETS を更新。使用画像と Lab を CLAUDE.md に記録。
 - その他候補: compute_km_table 出力を CSV/JSON 保存するバッチ CLI。
 
 ### B. データ層の追い込み (余力があれば)

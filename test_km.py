@@ -13,7 +13,7 @@ import numpy as np
 
 from lab_utils import lab_to_reflectance, reflectance_to_lab
 import km
-from estimate_s import estimate_s
+from estimate_s import estimate_s, estimate_s_scalar
 
 
 def deltaE_76(lab1, lab2):
@@ -209,6 +209,56 @@ def test_resolve_line_s():
     return fails
 
 
+def test_estimate_s_scalar():
+    """単一スカラー化(plan A): 飽和ch除外 + median + 診断。"""
+    print("\n性質7: estimate_s_scalar(飽和ch除外→単一S)")
+    fails = []
+    white = np.array([96.0, 0.0, 0.0])
+    r_g = km.km_reflectance(np.zeros(3), np.zeros(3), 0.0, lab_to_reflectance(white))
+
+    def forward_thin(full_lab, S, t):
+        ks = km.ks_from_lab(full_lab)
+        r = km.km_reflectance(ks, np.full(3, S), t, lab_to_reflectance(white))
+        return reflectance_to_lab(r)
+
+    # (1) 中明度タウプ(全ch 情報あり) → 3ch採用 & S 復元
+    full_light = np.array([55.0, 10.0, 8.0])
+    thin = forward_thin(full_light, 50.0, 0.01)
+    r = estimate_s_scalar(full_light, thin, t_light=0.01, substrate_lab=white,
+                          dr_min=0.03, s_valid=(1, 1000))
+    ok = r["n_adopted"] == 3 and abs(r["s"] - 50.0) / 50.0 < 0.1
+    print(f"  [{'OK' if ok else 'NG'}] 全ch情報: 採用{r['n_adopted']}/3 S={r['s']} "
+          f"(true 50) ΔR={r['delta_r']}")
+    if not ok: fails.append(("全ch", r))
+
+    # (2) 鮮やか赤 + 大きな S: 暗ch飽和 → 一部除外, S は出る
+    full_vivid = np.array([45.0, 55.0, 25.0])
+    thin = forward_thin(full_vivid, 80.0, 0.02)
+    r = estimate_s_scalar(full_vivid, thin, t_light=0.02, substrate_lab=white,
+                          dr_min=0.03, s_valid=(1, 1000))
+    ok = 1 <= r["n_adopted"] < 3 and r["s"] is not None
+    print(f"  [{'OK' if ok else 'NG'}] 鮮やか: 採用{r['n_adopted']}/3 S={r['s']} "
+          f"採用ch={r['adopted']} ΔR={r['delta_r']}")
+    if not ok: fails.append(("鮮やか一部除外", r))
+
+    # (3) 全飽和(薄=フル) → 校正不能
+    r = estimate_s_scalar(full_vivid, full_vivid, t_light=0.3, substrate_lab=white,
+                          dr_min=0.03)
+    ok = r["s"] is None and r["status"] == "all_saturated"
+    print(f"  [{'OK' if ok else 'NG'}] 薄=フル: status={r['status']} s={r['s']}")
+    if not ok: fails.append(("全飽和", r))
+
+    # (4) 妥当域外の警告フラグ
+    thin = forward_thin(full_light, 50.0, 0.01)
+    r = estimate_s_scalar(full_light, thin, t_light=0.01, substrate_lab=white,
+                          dr_min=0.03, s_valid=(100, 500))  # 50 は域外
+    ok = r["status"] == "out_of_range" and r["s"] is not None
+    print(f"  [{'OK' if ok else 'NG'}] 妥当域外: status={r['status']} S={r['s']}")
+    if not ok: fails.append(("妥当域外", r))
+
+    return fails
+
+
 def main():
     all_fails = []
     all_fails += test_t0_is_lip()
@@ -217,6 +267,7 @@ def main():
     all_fails += test_estimate_s_round_trip()
     all_fails += test_compute_km_table()
     all_fails += test_resolve_line_s()
+    all_fails += test_estimate_s_scalar()
 
     print()
     if all_fails:

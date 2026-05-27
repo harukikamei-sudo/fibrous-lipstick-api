@@ -23,7 +23,7 @@ from lab_utils import lab_to_reflectance
 import km
 
 
-__all__ = ["estimate_s"]
+__all__ = ["estimate_s", "estimate_s_scalar"]
 
 # S の探索上限。S·t_light が大きいと R は R∞ に張り付くので、この辺で頭打ち
 _S_MAX = 1.0e4
@@ -93,3 +93,68 @@ def estimate_s(full_lab, light_lab, t_light=0.3, substrate_lab=None):
             ks_ch, float(r_obs[ch]), float(t_light), rg_ch, float(r_inf[ch])
         )
     return s
+
+
+def estimate_s_scalar(full_lab, light_lab, t_light=0.3, substrate_lab=None,
+                      dr_min=0.03, s_valid=(10.0, 500.0)):
+    """飽和チャネルを除外して、単一スカラーのライン S を頑健に推定する。
+
+    S は本来「散乱は色相にほぼ依存しない=1スカラー」が物理前提。チャネル毎の
+    推定がばらつくのは暗・高彩度チャネルの飽和による artifact なので、情報の
+    無いチャネルを捨てて残りの中央値を採る。
+
+    チャネル採用ゲート: フル発色と薄付きの反射率差 |R_full - R_thin| が dr_min
+    未満のチャネルは除外する。これは
+      - 飽和(薄≈フル)        → 差が小さい
+      - 顔料が透明なch(素肌≈フル≈薄) → 差が小さい
+    の両方を 1 つの片側ゲートで捌ける(どちらも S の情報を持たない)。
+
+    Args:
+        full_lab/light_lab/t_light/substrate_lab: estimate_s と同じ。
+            t_light は規約で固定する量(データから逆算は原理的に不可。S·t しか
+            観測に効かないため)。
+        dr_min: チャネル採用の反射率差しきい値(既定 0.03)。
+        s_valid: 物性的に妥当とみなす S の範囲(min, max)。外れたら警告。
+
+    Returns:
+        dict: {
+            "s": float|None,          # 採用チャネルの中央値。校正不能なら None
+            "per_channel_s": [3 floats],
+            "delta_r": [3 floats],     # |R_full - R_thin|
+            "adopted": [3 bools],
+            "n_adopted": int,
+            "t_light", "dr_min": 入力エコー,
+            "status": "ok"|"out_of_range"|"all_saturated",
+            "note": str,
+        }
+    """
+    r_inf = np.asarray(lab_to_reflectance(full_lab), dtype=float)
+    r_obs = np.asarray(lab_to_reflectance(light_lab), dtype=float)
+    s_all = estimate_s(full_lab, light_lab, t_light=t_light,
+                       substrate_lab=substrate_lab)
+    dr = np.abs(r_inf - r_obs)
+    adopted = dr >= dr_min
+
+    result = {
+        "per_channel_s": [round(float(v), 3) for v in s_all],
+        "delta_r": [round(float(v), 4) for v in dr],
+        "adopted": [bool(x) for x in adopted],
+        "n_adopted": int(adopted.sum()),
+        "t_light": t_light,
+        "dr_min": dr_min,
+    }
+
+    if not adopted.any():
+        result.update(
+            s=None, status="all_saturated",
+            note="全チャネルが飽和(ΔR<dr_min)。校正不能 → より淡い色で取り直す",
+        )
+        return result
+
+    s_scalar = float(np.median(s_all[adopted]))
+    status, note = "ok", f"{int(adopted.sum())}/3 ch 採用 → median S"
+    if not (s_valid[0] <= s_scalar <= s_valid[1]):
+        status = "out_of_range"
+        note += f"（S={s_scalar:.1f} が妥当域{list(s_valid)}外、要確認）"
+    result.update(s=round(s_scalar, 3), status=status, note=note)
+    return result
