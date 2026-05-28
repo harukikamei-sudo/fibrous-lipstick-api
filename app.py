@@ -272,11 +272,14 @@ class EvaluateRequest(BaseModel):
 
 class EvaluateResponse(BaseModel):
     expected_pc: str
-    top_n: int
+    top_n: int = Field(..., description="実際に評価できた件数(タグ付き商品で埋めた TOP_n)")
     matched_count: int = Field(..., description="catalog_pc_tags が expected_pc または "
                                                 "'イエベ・ブルベ問わず' を含む件数")
-    match_rate: float
+    match_rate: float = Field(..., description="matched_count / top_n。タグ空商品は分母から除外済み")
     interpretation: str = Field(..., description="'good' (>=0.7) / 'acceptable' (>=0.5) / 'poor'")
+    n_empty_tag_skipped: int = Field(
+        0, description="TOP_n を埋めるために飛ばした「タグ空商品」の件数(透明性のため)"
+    )
     details: List[Dict]
 
 
@@ -606,20 +609,34 @@ def _interpret_match_rate(r: float) -> str:
 def evaluate_endpoint(req: EvaluateRequest):
     """予測(論文ベース)と カタログ PC タグの一致率を測る。
 
-    pc_season=expected_pc で内部 /recommend → TOP-N → 各商品の
-    catalog_pc_tags に expected_pc または 'イエベ・ブルベ問わず' が
-    含まれる割合を計算。MVP 合格ラインは 70%。
+    pc_season=expected_pc で内部 /recommend → **タグ付き商品だけで TOP_n を埋める**
+    (タグ空はスキップ。順位は下の商品で繰り上げ=バックフィル) → match_rate =
+    matched / TOP_n。「サイト編集者がそもそも判定していない商品」を分母に含めない
+    純粋精度。MVP 合格ライン 0.70。
     """
+    # バッファ多めに取って空タグをスキップしつつ TOP_n を確保
+    buffer_n = max(req.top_n * 4, 40)
     rec = recommend_endpoint(RecommendRequest(
         lip_lab=req.lip_lab,
         pc_season=req.expected_pc,
         t=req.t,
-        top_n=req.top_n,
+        top_n=buffer_n,
     ))
+    tagged = [r for r in rec.results if r.catalog_pc_tags]
+    selected = tagged[:req.top_n]
+
+    # 飛ばした空タグ件数 = TOP_n を埋めるのに消費した位置 - len(selected)
+    if selected:
+        last_id = selected[-1].id
+        last_pos = next(i for i, r in enumerate(rec.results) if r.id == last_id)
+        n_skipped = (last_pos + 1) - len(selected)
+    else:
+        n_skipped = 0
+
     universal = "イエベ・ブルベ問わず"
     matched = 0
     details = []
-    for r in rec.results:
+    for r in selected:
         tags = r.catalog_pc_tags
         is_match = (req.expected_pc in tags) or (universal in tags)
         if is_match:
@@ -634,7 +651,7 @@ def evaluate_endpoint(req: EvaluateRequest):
             "catalog_pc_tags": tags,
             "match": is_match,
         })
-    n = len(rec.results)
+    n = len(selected)
     rate = (matched / n) if n else 0.0
     return EvaluateResponse(
         expected_pc=req.expected_pc,
@@ -642,5 +659,6 @@ def evaluate_endpoint(req: EvaluateRequest):
         matched_count=matched,
         match_rate=round(rate, 3),
         interpretation=_interpret_match_rate(rate),
+        n_empty_tag_skipped=n_skipped,
         details=details,
     )

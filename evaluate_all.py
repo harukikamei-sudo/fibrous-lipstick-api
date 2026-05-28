@@ -54,8 +54,9 @@ def main():
     args = ap.parse_args()
 
     rows = []
-    print(f"{'唇プリセット':<14} {'PC':<10} {'matched/N':<11} {'rate':<6} {'interp'}")
-    print("-" * 60)
+    print(f"{'唇プリセット':<14} {'PC':<10} {'matched/N':<11} {'rate':<6} "
+          f"{'空skip':<7} {'interp'}")
+    print("-" * 70)
     for preset, pc in iproduct(PRESETS, PCS):
         lab = km.LIP_PRESETS[preset]
         if args.api:
@@ -64,11 +65,12 @@ def main():
             res = _local_post(lab, pc, args.top_n)
         rows.append({"preset": preset, "pc": pc, **res})
         print(f"{preset:<14} {pc:<10} {res['matched_count']}/{res['top_n']:<8} "
-              f"{res['match_rate']:<6.2f} {res['interpretation']}")
+              f"{res['match_rate']:<6.2f} {res.get('n_empty_tag_skipped',0):<7} "
+              f"{res['interpretation']}")
 
     rates = [r["match_rate"] for r in rows]
     avg = sum(rates) / len(rates) if rates else 0.0
-    print("-" * 60)
+    print("-" * 70)
     print(f"全平均 一致率 = {avg:.3f}  ({_label(avg)})")
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))

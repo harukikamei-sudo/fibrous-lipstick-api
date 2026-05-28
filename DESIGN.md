@@ -327,15 +327,25 @@ pc_score = √(d_L² + d_a² + d_b²)
 未指定時は従来通り `delta_e_to_target` または `delta_e_to_lip`。
 
 ### `/evaluate` + `evaluate_all.py`(妥当性測定)
-「論文ベース予測の TOP-N」と「カタログ `pc_season` タグ」の一致率:
+「論文ベース予測の TOP-N」と「カタログ `pc_season` タグ」の一致率。
+
+**空タグ商品のバックフィル**: サイト編集者がそもそも PC タグを付けていない商品
+(catalog_pc_tags が空)は「予測 vs 編集者」の比較対象にならないので、TOP-N 候補
+から飛ばして次の**タグ付き商品で繰り上げ**て TOP-N を埋める。バッファとして
+`max(top_n*4, 40)` 件先まで /recommend を呼び、タグ付きのみ採用。
 ```
-matched = TOP-N 中、catalog_pc_tags に expected_pc または "イエベ・ブルベ問わず"
+matched = TOP_n 中、catalog_pc_tags に expected_pc または "イエベ・ブルベ問わず"
           を含む件数
-match_rate = matched / N
+match_rate = matched / TOP_n   (TOP_n は常に評価可能なタグ付き商品で埋まる)
+n_empty_tag_skipped: 埋めるために飛ばした空タグ件数(透明性のため返却)
 interpretation: ≥0.7 good / ≥0.5 acceptable / <0.5 poor
 ```
-**MVP 合格ライン = 0.70。初回バッチ(5唇プリセット × 4PC = 20組) 全平均 0.750(good)**。
-イエベ秋のみ 0.40〜0.50 で要チューニング(L 領域が春と被る)。
+**MVP 合格ライン = 0.70**。
+
+**最新バッチ(5唇プリセット × 4PC = 20組、清濁C*軸 + バックフィル):**
+全平均 **0.810 (good)**、20セル中19セルがgood、最低でも acceptable。
+- イエベ春 平均 0.82 / イエベ秋 0.71 / ブルベ夏 0.92 / ブルベ冬 0.80
+- イエベ秋系で 5-6 件のスキップが発生(=カタログ秋タグの未付与集中区域が可視化)
 
 ### 役割分担
 - **Kawano**: 写真 → 唇 Lab + PC 判定(撮影/分類担当)

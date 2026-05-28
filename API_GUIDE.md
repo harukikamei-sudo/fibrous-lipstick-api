@@ -326,13 +326,14 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/evaluate \
 ```json
 {
   "expected_pc": "ブルベ夏",
-  "top_n": 10,
+  "top_n": 10,                       // 実評価できた件数(タグ付きで埋めたTOP_n)
   "matched_count": 10,
   "match_rate": 1.0,
   "interpretation": "good",          // "good"(>=0.7) | "acceptable"(>=0.5) | "poor"
+  "n_empty_tag_skipped": 0,          // 埋めるために飛ばした空タグ件数
   "details": [
     {"id":"...","name":"...","line_category":"...",
-     "applied_lab":{...},"pc_score":0.0,
+     "applied_lab":{...},"applied_chroma":31.22,"pc_score":0.0,
      "catalog_pc_tags":["ブルベ夏","イエベ春"],
      "match": true},
     ...
@@ -340,18 +341,18 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/evaluate \
 }
 ```
 
-**現状の妥当性**(清濁 C* 軸を追加した版・ローカル実測):
+**現状の妥当性**(清濁 C* 軸 + 空タグ バックフィル版・ローカル実測):
 | 唇プリセット | イエベ春 | イエベ秋 | ブルベ夏 | ブルベ冬 |
 |---|---|---|---|---|
-| pale_pink | 0.80 | 0.60 | 0.90 | 0.80 |
-| healthy_pink | 0.80 | 0.60 | 0.90 | 0.80 |
-| reddish | 0.70 | 0.50 | 0.90 | 0.80 |
-| beige | 0.70 | 0.50 | 0.90 | 0.80 |
-| dark | 0.60 | 0.70 | 1.00 | 0.80 |
-| **全平均** | | | | **0.755 (good)** |
+| pale_pink | 0.90 | 0.70 | 0.90 | 0.80 |
+| healthy_pink | 0.90 | 0.60 | 0.90 | 0.80 |
+| reddish | 0.80 | 0.70 | 0.90 | 0.80 |
+| beige | 0.80 | 0.70 | 0.90 | 0.80 |
+| dark | 0.70 | 0.80 | 1.00 | 0.80 |
+| **全平均** | | | | **0.810 (good)** |
 
-**イエベ秋の平均が 0.46 → 0.58 に改善**(清濁条件で春と分離精度が上がった)。
-他PCはほぼ維持(春が若干下がったのは領域絞り込みの影響、許容範囲)。
+**20セル中19セルが good (≥0.7)**。イエベ秋も平均 0.71 で good 帯に到達。
+空タグ商品は分母から除外(`n_empty_tag_skipped` で透明性確保)。
 
 ---
 

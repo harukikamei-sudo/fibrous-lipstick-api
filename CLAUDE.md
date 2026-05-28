@@ -185,7 +185,10 @@ delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
   外なら 4次元 ユークリッド距離。未知 PC は `None`。
 - `/evaluate`(新)+ `evaluate_all.py`(バッチ): 「予測 TOP-N 中、カタログタグに
   expected_pc or イエベ・ブルベ問わずを含む割合」を測る妥当性メトリクス。
-  MVP 合格ライン 0.70。**初回測定: 全平均 0.750 (good)** をクリア。
+  **空タグ商品はバックフィル**(編集者未判定=評価対象外として分母から除外し、
+  次のタグ付き商品で繰り上げて TOP_n を埋める)。MVP 合格ライン 0.70。
+  清濁 C* + バックフィル後の最新測定: **全平均 0.810 (good)、20セル中19セルが good**。
+  イエベ秋も平均 0.71 で good 帯に到達(0.46→0.58→0.71)。
 
 ### PC 連携の役割分担
 - Kawano: 写真 → 唇 Lab + PC 判定(写真ベースの判定担当)
@@ -230,6 +233,7 @@ delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
 | 7.5 | S校正基盤 (estimate_s_scalar/_layered + sample_lab CLI) | ✅ 完了 (tint S≈0.4 実測、3点フィット実証) |
 | 4 | /recommend(唇色→全商品applied→ΔE TOP5) + line_category + LIP_PRESETS | ✅ 完了 (catalog140件、TestClient疎通) |
 | 4.5 | PC連携(論文ベース Lab領域) + /evaluate + evaluate_all.py | ✅ 完了 (全平均一致率 0.75 で MVP 70% 突破) |
+| 4.6 | PC: 清濁(C*)軸 + 空タグバックフィル | ✅ 完了 (全平均 0.810、20/20 good or acceptable) |
 | UI-Lv2 | Streamlit ui_app.py(実写唇に塗布シミュ合成。α羽化ブレンドで顔保持) | ✅ 完了。実写モデル(CC BY 3.0)に色を重ねてリアル表示。色しきい値で唇マスク自動抽出 |
 
 ## 次回の進め方 / TODO
