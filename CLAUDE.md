@@ -161,10 +161,29 @@ products.csv / products_with_lab.csv の line_category 列、resolve_line_s、/r
 (pale_pink / healthy_pink / reddish / beige / dark)。/recommend の下地などに使う。
 
 **`/recommend`(app.py, Phase4)**: 唇色 → 全カタログ商品の applied_lab を計算 →
-目標色との ΔE(CIE76)昇順で TOP_n。`{lip_lab, t=1.0, target_lab?(省略時=lip_lab),
-line_category?, hue_min/max?, L_min/max?, top_n=5}` → `{count, sort_target,
-results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}`。
-カタログは起動時に products_with_lab.csv からロード(status=excluded と Lab 無しは除外)。
+スコア昇順で TOP_n。`{lip_lab, t=1.0, target_lab?, pc_season?, line_category?,
+hue_min/max?, L_min/max?, top_n=5}` → `{count, catalog_size, filter_method,
+pc_season, sort_target, results:[{id,name,line_category,original_lab,applied_lab,
+delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
+ソートキー: `pc_season` 指定 → **pc_score**(論文ベース)、target_lab 指定 → ΔE_to_target、
+それ以外 → ΔE_to_lip(唇に近い=自然)。カタログは起動時に products_with_lab.csv からロード。
+
+**★PC(パーソナルカラー)連携 — 採用方針(2-a 論文ベース Lab 領域)**
+- カタログの `pc_season` タグは**ロジックに使わない**(=「答え」を使わない)。
+  **答え合わせ用に保持**(catalog_pc_tags でレスポンスに同梱、UI に小さく参考表示)。
+- `km.PC_LIPSTICK_TARGETS`: 4PC × {L_range, a_range, b_range, description, sources}
+  を論文/色彩学指針で定義(Weatherall&Coombs 1992, Rees 2003, Del Bino&Bernerd 2013,
+  業界一般指針 coral/terracotta/rose/burgundy)。
+- `km.compute_pc_score(applied_lab, pc_season)`: applied が領域内なら 0、外なら
+  各軸超過量の二乗和の√(=矩形までのユークリッド距離)。小さいほど合う。
+- `/evaluate`(新)+ `evaluate_all.py`(バッチ): 「予測 TOP-N 中、カタログタグに
+  expected_pc or イエベ・ブルベ問わずを含む割合」を測る妥当性メトリクス。
+  MVP 合格ライン 0.70。**初回測定: 全平均 0.750 (good)** をクリア。
+
+### PC 連携の役割分担
+- Kawano: 写真 → 唇 Lab + PC 判定(写真ベースの判定担当)
+- Haruki: 唇 Lab + PC を入力に、論文ベース推奨ロジックを構築(本実装)
+- カタログ pc_season タグはあくまで「答え合わせ用」
 - **物理的限界(重要)**: K/S が大きい暗・高彩度チャネルは薄付きでも完全不透明
   (R が R∞ に張り付く)になり、S が観測色に反映されず逆算不能。これは情報損失
   でありバグではない。test_km.py は「自己整合性(全ch)＋感度chのS復元」で検証。
@@ -203,6 +222,7 @@ results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}`。
 | 7 | K-M 本実装 (km/estimate_s + /estimate_s,/compute_km_table の501解除) | ✅ 完了 (TestClient で疎通確認、全テスト通過) |
 | 7.5 | S校正基盤 (estimate_s_scalar/_layered + sample_lab CLI) | ✅ 完了 (tint S≈0.4 実測、3点フィット実証) |
 | 4 | /recommend(唇色→全商品applied→ΔE TOP5) + line_category + LIP_PRESETS | ✅ 完了 (catalog140件、TestClient疎通) |
+| 4.5 | PC連携(論文ベース Lab領域) + /evaluate + evaluate_all.py | ✅ 完了 (全平均一致率 0.75 で MVP 70% 突破) |
 | UI-Lv2 | Streamlit ui_app.py(実写唇に塗布シミュ合成。α羽化ブレンドで顔保持) | ✅ 完了。実写モデル(CC BY 3.0)に色を重ねてリアル表示。色しきい値で唇マスク自動抽出 |
 
 ## 次回の進め方 / TODO

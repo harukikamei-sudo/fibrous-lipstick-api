@@ -41,6 +41,9 @@ __all__ = [
     "classify_line_category",
     "resolve_line_s",
     "LIP_PRESETS",
+    "PC_SEASONS",
+    "PC_LIPSTICK_TARGETS",
+    "compute_pc_score",
 ]
 
 # 仕上げタイプ → ライン散乱係数 S(各チャネル共通)のプリセット。
@@ -126,6 +129,93 @@ LIP_PRESETS = {
     "beige":        [64.0, 13.0, 17.0],   # ベージュ寄り
     "dark":         [44.0, 21.0, 13.0],   # 暗め
 }
+
+
+# ============ パーソナルカラー(PC)別の理想的唇色 Lab 領域 ============
+#
+# 「カタログの pc_season タグでフィルタする(=答えを使う)」ではなく、論文/色彩学
+# 指針から PC 別に Lab の矩形領域を定義し、シミュ結果の applied_lab がその領域
+# にどれだけ近いかでランキングする。タグは答え合わせ用に別途取得・参照のみ。
+
+PC_SEASONS = ("イエベ春", "イエベ秋", "ブルベ夏", "ブルベ冬")
+
+PC_LIPSTICK_TARGETS = {
+    "イエベ春": {
+        "L_range": (55.0, 75.0),
+        "a_range": (25.0, 50.0),
+        "b_range": (15.0, 35.0),
+        "description": "明るく彩度高めの暖色(コーラル/ピーチ/テラコッタ)",
+        "sources": [
+            "Rees 2003 (high carotenoid → warm)",
+            "Weatherall & Coombs 1992 (b* > 0 = warm undertone)",
+            "Industry consensus: coral, peach, terracotta",
+        ],
+    },
+    "イエベ秋": {
+        "L_range": (35.0, 55.0),
+        "a_range": (20.0, 40.0),
+        "b_range": (15.0, 30.0),
+        "description": "暗めの暖色(ブリック/テラコッタ/ウォームブラウン)",
+        "sources": [
+            "Rees 2003 (high carotenoid → warm)",
+            "Industry consensus: brick, terracotta, warm brown",
+        ],
+    },
+    "ブルベ夏": {
+        "L_range": (55.0, 75.0),
+        "a_range": (20.0, 40.0),
+        "b_range": (-5.0, 10.0),
+        "description": "明るく低彩度の寒色寄り(ローズ/モーブ/ベリー)",
+        "sources": [
+            "Del Bino & Bernerd 2013 (high hemoglobin + low carotenoid → cool)",
+            "Weatherall & Coombs 1992 (b* < 0 = cool undertone)",
+            "Industry consensus: rose, mauve, berry",
+        ],
+    },
+    "ブルベ冬": {
+        "L_range": (30.0, 50.0),
+        "a_range": (35.0, 60.0),
+        "b_range": (-5.0, 15.0),
+        "description": "暗く高彩度の寒色寄り(バーガンディ/ワイン/ディープベリー)",
+        "sources": [
+            "Del Bino et al. (ITA based skin tone classification)",
+            "Industry consensus: burgundy, wine, deep berry",
+        ],
+    },
+}
+
+
+def _axis_outside_distance(value, lo, hi):
+    """値が [lo, hi] の外なら境界までの距離、内なら 0。"""
+    if value < lo:
+        return lo - value
+    if value > hi:
+        return value - hi
+    return 0.0
+
+
+def compute_pc_score(applied_lab, pc_season):
+    """applied_lab が PC 別 Lab 矩形領域にどれだけ近いか。
+
+    領域内なら 0、外なら各軸の超過量を二乗和で集約し √ で返す
+    (=矩形までのユークリッド距離)。小さいほど合う。
+
+    Args:
+        applied_lab: dict {L,a,b} または [L,a,b]/(L,a,b)
+        pc_season: PC_LIPSTICK_TARGETS のキー("イエベ春" 等)
+    """
+    if pc_season not in PC_LIPSTICK_TARGETS:
+        raise KeyError(f"未知の pc_season: {pc_season}. "
+                       f"許容: {list(PC_LIPSTICK_TARGETS)}")
+    if isinstance(applied_lab, dict):
+        L, a, b = float(applied_lab["L"]), float(applied_lab["a"]), float(applied_lab["b"])
+    else:
+        L, a, b = float(applied_lab[0]), float(applied_lab[1]), float(applied_lab[2])
+    t = PC_LIPSTICK_TARGETS[pc_season]
+    dL = _axis_outside_distance(L, *t["L_range"])
+    da = _axis_outside_distance(a, *t["a_range"])
+    db = _axis_outside_distance(b, *t["b_range"])
+    return float((dL * dL + da * da + db * db) ** 0.5)
 
 # 反射率を (EPS, 1-EPS) に収めて 0/1 での発散を避ける
 EPS = 1e-6

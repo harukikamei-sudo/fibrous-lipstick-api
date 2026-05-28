@@ -9,7 +9,8 @@
   POST /compute_km_table       — K-M 計算。2 モード:
                                    単品 (product_lab + line_category) /
                                    バッチ (products[+lines]) → 厚み21段の applied Lab
-  POST /recommend              — 唇色 → 全商品 applied_lab → ΔE で TOP5 推薦
+  POST /recommend              — 唇色(+PC) → 全商品 applied_lab → ΔE / PCスコアで推薦
+  POST /evaluate               — PC連携の妥当性: 予測 TOP-N と カタログ PC タグの一致率
 
 ローカル起動:
   uvicorn app:app --reload
@@ -45,6 +46,13 @@ REQUEST_TIMEOUT_SEC = 30
 CATALOG_PATH = os.path.join(os.path.dirname(__file__), "products_with_lab.csv")
 
 
+def _parse_pc_tags(s: str) -> List[str]:
+    """'イエベ春,ブルベ夏' のようなカンマ区切りタグを正規化リスト化。"""
+    if not s:
+        return []
+    return [tok.strip() for tok in s.split(",") if tok.strip()]
+
+
 def _load_catalog() -> List[Dict]:
     """products_with_lab.csv を読み、Lab 抽出済み(非 excluded)の商品リストを返す。"""
     items: List[Dict] = []
@@ -66,6 +74,9 @@ def _load_catalog() -> List[Dict]:
                 "line_category": row.get("line_category")
                 or km.classify_line_category(line_id),
                 "lab": lab,
+                # ★PC 連携用: カタログのタグは「答え合わせ用」として保持。
+                # 推奨ロジックでは使わない(参考表示のみ)。
+                "pc_tags": _parse_pc_tags(row.get("pc_season", "")),
             })
     return items
 
@@ -197,11 +208,19 @@ class ComputeKmTableResponse(BaseModel):
 
 # ---- /recommend ----
 
+PCSeasonLiteral = Literal["イエベ春", "イエベ秋", "ブルベ夏", "ブルベ冬"]
+
+
 class RecommendRequest(BaseModel):
     lip_lab: LabValue = Field(..., description="唇地肌の Lab(下地)")
     t: float = Field(1.0, gt=0.0, le=5.0, description="塗り厚 t(塗り重ね量)")
     target_lab: Optional[LabValue] = Field(
         None, description="並べ替えの目標色。省略時は lip_lab(=最も自然/唇寄り)"
+    )
+    pc_season: Optional[PCSeasonLiteral] = Field(
+        None,
+        description="パーソナルカラー。指定時は applied_lab を PC 別 Lab 領域からの距離で"
+                    "並べ替える(論文ベース)。カタログタグはロジックに使わず、参考表示のみ。"
     )
     line_category: Optional[LineCategory] = Field(
         None, description="仕上げタイプで絞り込み"
@@ -219,13 +238,45 @@ class RecommendItem(BaseModel):
     line_category: str
     original_lab: LabValue = Field(..., description="商品本来の発色 Lab")
     applied_lab: LabValue = Field(..., description="唇に厚み t で塗った後の Lab")
-    delta_e: float = Field(..., description="目標色との ΔE(CIE76)")
+    delta_e: float = Field(..., description="ソートに使った主スコア (PC 指定時=pc_score、それ以外=唇/目標色との ΔE)")
+    pc_score: Optional[float] = Field(
+        None, description="applied_lab と PC 別 Lab 領域(矩形)とのユークリッド距離。指定時のみ"
+    )
+    delta_e_to_lip: float = Field(..., description="applied_lab と lip_lab の ΔE(参考)")
+    catalog_pc_tags: List[str] = Field(
+        default_factory=list,
+        description="カタログ pc_season タグ(参考表示。推奨ロジックには未使用)"
+    )
 
 
 class RecommendResponse(BaseModel):
     count: int = Field(..., description="フィルタ後の候補数")
-    sort_target: LabValue = Field(..., description="並べ替えに使った目標色")
+    catalog_size: int = Field(..., description="カタログ全体の件数")
+    filter_method: str = Field(
+        ..., description="'pc_season_target_region' / 'delta_e_to_target' / 'delta_e_to_lip'"
+    )
+    pc_season: Optional[str] = Field(None, description="指定された PC(あれば)")
+    sort_target: LabValue = Field(..., description="並べ替えに使った目標色(PC指定時は領域中心の参考値)")
     results: List[RecommendItem]
+
+
+# ---- /evaluate ----
+
+class EvaluateRequest(BaseModel):
+    lip_lab: LabValue
+    expected_pc: PCSeasonLiteral
+    t: float = Field(1.0, gt=0.0, le=5.0)
+    top_n: int = Field(10, ge=1, le=50)
+
+
+class EvaluateResponse(BaseModel):
+    expected_pc: str
+    top_n: int
+    matched_count: int = Field(..., description="catalog_pc_tags が expected_pc または "
+                                                "'イエベ・ブルベ問わず' を含む件数")
+    match_rate: float
+    interpretation: str = Field(..., description="'good' (>=0.7) / 'acceptable' (>=0.5) / 'poor'")
+    details: List[Dict]
 
 
 # ============ Helpers ============
@@ -352,6 +403,7 @@ def root():
             "/estimate_s",
             "/compute_km_table",
             "/recommend",
+            "/evaluate",
         ],
         "catalog_size": len(CATALOG),
     }
@@ -458,16 +510,34 @@ def _hue_in_range(h: float, lo: Optional[float], hi: Optional[float]) -> bool:
     return h >= lo or h <= hi  # 0°をまたぐ範囲(例 330〜30)
 
 
+def _pc_region_center(pc_season: str) -> List[float]:
+    """PC 領域の参考中心(L,a,b 範囲の中央)。sort_target 用の表示値。"""
+    t = km.PC_LIPSTICK_TARGETS[pc_season]
+    return [(t["L_range"][0] + t["L_range"][1]) / 2,
+            (t["a_range"][0] + t["a_range"][1]) / 2,
+            (t["b_range"][0] + t["b_range"][1]) / 2]
+
+
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend_endpoint(req: RecommendRequest):
     if not CATALOG:
         raise HTTPException(status_code=503, detail="商品カタログが未ロード")
 
     lip = [req.lip_lab.L, req.lip_lab.a, req.lip_lab.b]
+    has_pc = req.pc_season is not None
+    has_target = req.target_lab is not None
     target = (
-        [req.target_lab.L, req.target_lab.a, req.target_lab.b]
-        if req.target_lab is not None else lip
+        [req.target_lab.L, req.target_lab.a, req.target_lab.b] if has_target
+        else (_pc_region_center(req.pc_season) if has_pc else lip)
     )
+
+    # ソートキー方式の決定: PC > 明示 target > 既定(唇に近い)
+    if has_pc:
+        filter_method = "pc_season_target_region"
+    elif has_target:
+        filter_method = "delta_e_to_target"
+    else:
+        filter_method = "delta_e_to_lip"
 
     scored = []
     for p in CATALOG:
@@ -487,9 +557,17 @@ def recommend_endpoint(req: RecommendRequest):
         if req.L_max is not None and aL > req.L_max:
             continue
 
-        dE = math.sqrt((aL - target[0]) ** 2 + (aa - target[1]) ** 2
-                       + (ab - target[2]) ** 2)
-        scored.append((dE, p, (aL, aa, ab)))
+        dE_lip = math.sqrt((aL - lip[0]) ** 2 + (aa - lip[1]) ** 2
+                           + (ab - lip[2]) ** 2)
+        if has_pc:
+            pc_score = km.compute_pc_score({"L": aL, "a": aa, "b": ab},
+                                           req.pc_season)
+            primary = pc_score
+        else:
+            pc_score = None
+            primary = math.sqrt((aL - target[0]) ** 2 + (aa - target[1]) ** 2
+                                + (ab - target[2]) ** 2)
+        scored.append((primary, pc_score, dE_lip, p, (aL, aa, ab)))
 
     scored.sort(key=lambda x: x[0])
     results = [
@@ -497,12 +575,69 @@ def recommend_endpoint(req: RecommendRequest):
             id=p["id"], name=p["name"], line_category=p["line_category"],
             original_lab=LabValue(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
             applied_lab=LabValue(L=round(aL, 2), a=round(aa, 2), b=round(ab, 2)),
-            delta_e=round(dE, 2),
+            delta_e=round(primary, 2),
+            pc_score=(round(pc_score, 2) if pc_score is not None else None),
+            delta_e_to_lip=round(dE_lip, 2),
+            catalog_pc_tags=list(p.get("pc_tags", [])),
         )
-        for dE, p, (aL, aa, ab) in scored[:req.top_n]
+        for primary, pc_score, dE_lip, p, (aL, aa, ab) in scored[:req.top_n]
     ]
     return RecommendResponse(
         count=len(scored),
+        catalog_size=len(CATALOG),
+        filter_method=filter_method,
+        pc_season=req.pc_season,
         sort_target=LabValue(L=target[0], a=target[1], b=target[2]),
         results=results,
+    )
+
+
+def _interpret_match_rate(r: float) -> str:
+    if r >= 0.7:
+        return "good"
+    if r >= 0.5:
+        return "acceptable"
+    return "poor"
+
+
+@app.post("/evaluate", response_model=EvaluateResponse)
+def evaluate_endpoint(req: EvaluateRequest):
+    """予測(論文ベース)と カタログ PC タグの一致率を測る。
+
+    pc_season=expected_pc で内部 /recommend → TOP-N → 各商品の
+    catalog_pc_tags に expected_pc または 'イエベ・ブルベ問わず' が
+    含まれる割合を計算。MVP 合格ラインは 70%。
+    """
+    rec = recommend_endpoint(RecommendRequest(
+        lip_lab=req.lip_lab,
+        pc_season=req.expected_pc,
+        t=req.t,
+        top_n=req.top_n,
+    ))
+    universal = "イエベ・ブルベ問わず"
+    matched = 0
+    details = []
+    for r in rec.results:
+        tags = r.catalog_pc_tags
+        is_match = (req.expected_pc in tags) or (universal in tags)
+        if is_match:
+            matched += 1
+        details.append({
+            "id": r.id,
+            "name": r.name,
+            "line_category": r.line_category,
+            "applied_lab": r.applied_lab.model_dump(),
+            "pc_score": r.pc_score,
+            "catalog_pc_tags": tags,
+            "match": is_match,
+        })
+    n = len(rec.results)
+    rate = (matched / n) if n else 0.0
+    return EvaluateResponse(
+        expected_pc=req.expected_pc,
+        top_n=n,
+        matched_count=matched,
+        match_rate=round(rate, 3),
+        interpretation=_interpret_match_rate(rate),
+        details=details,
     )
