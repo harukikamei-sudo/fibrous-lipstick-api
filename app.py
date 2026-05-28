@@ -238,9 +238,10 @@ class RecommendItem(BaseModel):
     line_category: str
     original_lab: LabValue = Field(..., description="商品本来の発色 Lab")
     applied_lab: LabValue = Field(..., description="唇に厚み t で塗った後の Lab")
+    applied_chroma: float = Field(..., description="applied_lab の彩度 C*=√(a²+b²)。清濁の判定軸")
     delta_e: float = Field(..., description="ソートに使った主スコア (PC 指定時=pc_score、それ以外=唇/目標色との ΔE)")
     pc_score: Optional[float] = Field(
-        None, description="applied_lab と PC 別 Lab 領域(矩形)とのユークリッド距離。指定時のみ"
+        None, description="applied_lab と PC 別 Lab+C* 領域とのユークリッド距離。指定時のみ"
     )
     delta_e_to_lip: float = Field(..., description="applied_lab と lip_lab の ΔE(参考)")
     catalog_pc_tags: List[str] = Field(
@@ -575,6 +576,7 @@ def recommend_endpoint(req: RecommendRequest):
             id=p["id"], name=p["name"], line_category=p["line_category"],
             original_lab=LabValue(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
             applied_lab=LabValue(L=round(aL, 2), a=round(aa, 2), b=round(ab, 2)),
+            applied_chroma=round(km.compute_chroma({"L": aL, "a": aa, "b": ab}), 2),
             delta_e=round(primary, 2),
             pc_score=(round(pc_score, 2) if pc_score is not None else None),
             delta_e_to_lip=round(dE_lip, 2),
@@ -627,6 +629,7 @@ def evaluate_endpoint(req: EvaluateRequest):
             "name": r.name,
             "line_category": r.line_category,
             "applied_lab": r.applied_lab.model_dump(),
+            "applied_chroma": r.applied_chroma,
             "pc_score": r.pc_score,
             "catalog_pc_tags": tags,
             "match": is_match,

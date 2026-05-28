@@ -44,6 +44,7 @@ __all__ = [
     "PC_SEASONS",
     "PC_LIPSTICK_TARGETS",
     "compute_pc_score",
+    "compute_chroma",
 ]
 
 # 仕上げタイプ → ライン散乱係数 S(各チャネル共通)のプリセット。
@@ -139,47 +140,60 @@ LIP_PRESETS = {
 
 PC_SEASONS = ("イエベ春", "イエベ秋", "ブルベ夏", "ブルベ冬")
 
+# ★清濁(C* 彩度)軸を追加: 日本流 PC は「色相・明度・彩度・清濁」の 4 軸で
+#   分類。清色(Clear)/濁色(Muted)の区別を C_min/C_max で表現する。
+#   - 春・冬 = 清(Clear, 高彩度) → C_min を課す
+#   - 夏・秋 = 濁(Muted, 低〜中彩度) → C_max を課す
+#   範囲の数値も春↔秋の重なりを減らすため再調整(春は L/a を上に寄せ、
+#   秋は a の下限を下げて彩度の低い領域も拾う)。
 PC_LIPSTICK_TARGETS = {
     "イエベ春": {
-        "L_range": (55.0, 75.0),
-        "a_range": (25.0, 50.0),
-        "b_range": (15.0, 35.0),
-        "description": "明るく彩度高めの暖色(コーラル/ピーチ/テラコッタ)",
+        "L_range": (60.0, 75.0),
+        "a_range": (30.0, 50.0),
+        "b_range": (18.0, 35.0),
+        "C_min": 35.0,                  # 清色(高彩度)
+        "description": "明るく彩度高めの暖色(コーラル/ピーチ/テラコッタ、清色)",
         "sources": [
+            "Color Me Beautiful (Jackson 1980): Clear warm spring",
+            "日本流 4 シーズン (NPCA 等): イエベ・明・高彩・清",
             "Rees 2003 (high carotenoid → warm)",
             "Weatherall & Coombs 1992 (b* > 0 = warm undertone)",
-            "Industry consensus: coral, peach, terracotta",
         ],
     },
     "イエベ秋": {
-        "L_range": (35.0, 55.0),
-        "a_range": (20.0, 40.0),
+        "L_range": (35.0, 50.0),
+        "a_range": (15.0, 35.0),
         "b_range": (15.0, 30.0),
-        "description": "暗めの暖色(ブリック/テラコッタ/ウォームブラウン)",
+        "C_max": 32.0,                  # 濁色(低〜中彩度)
+        "description": "暗めの暖色(ブリック/テラコッタ/ウォームブラウン、濁色)",
         "sources": [
-            "Rees 2003 (high carotenoid → warm)",
-            "Industry consensus: brick, terracotta, warm brown",
+            "Color Me Beautiful (Jackson 1980): Muted warm autumn",
+            "日本流 4 シーズン: イエベ・暗・低中彩・濁",
+            "Rees 2003",
         ],
     },
     "ブルベ夏": {
         "L_range": (55.0, 75.0),
-        "a_range": (20.0, 40.0),
+        "a_range": (15.0, 35.0),
         "b_range": (-5.0, 10.0),
-        "description": "明るく低彩度の寒色寄り(ローズ/モーブ/ベリー)",
+        "C_max": 32.0,                  # 濁色(低彩度寒色)
+        "description": "明るく低彩度の寒色寄り(ローズ/モーブ/ベリー、濁色)",
         "sources": [
+            "Color Me Beautiful (Jackson 1980): Muted cool summer",
             "Del Bino & Bernerd 2013 (high hemoglobin + low carotenoid → cool)",
             "Weatherall & Coombs 1992 (b* < 0 = cool undertone)",
-            "Industry consensus: rose, mauve, berry",
         ],
     },
     "ブルベ冬": {
         "L_range": (30.0, 50.0),
         "a_range": (35.0, 60.0),
         "b_range": (-5.0, 15.0),
-        "description": "暗く高彩度の寒色寄り(バーガンディ/ワイン/ディープベリー)",
+        "C_min": 35.0,                  # 清色(高彩度寒色) ※マトリクスに整合
+        "description": "暗く高彩度の寒色寄り(バーガンディ/ワイン/ディープベリー、清色)",
         "sources": [
+            "Color Me Beautiful (Jackson 1980): Clear cool winter",
+            "日本流 4 シーズン: ブルベ・暗・高彩・清",
             "Del Bino et al. (ITA based skin tone classification)",
-            "Industry consensus: burgundy, wine, deep berry",
         ],
     },
 }
@@ -194,19 +208,27 @@ def _axis_outside_distance(value, lo, hi):
     return 0.0
 
 
-def compute_pc_score(applied_lab, pc_season):
-    """applied_lab が PC 別 Lab 矩形領域にどれだけ近いか。
+def compute_chroma(lab):
+    """彩度 C* = √(a² + b²)。"""
+    if isinstance(lab, dict):
+        a = float(lab["a"]); b = float(lab["b"])
+    else:
+        a = float(lab[1]); b = float(lab[2])
+    return float((a * a + b * b) ** 0.5)
 
-    領域内なら 0、外なら各軸の超過量を二乗和で集約し √ で返す
-    (=矩形までのユークリッド距離)。小さいほど合う。
+
+def compute_pc_score(applied_lab, pc_season):
+    """applied_lab が PC 別 Lab 領域(L,a,b 矩形 + 清濁 C*)にどれだけ近いか。
+
+    領域内なら 0、外なら各軸(L,a,b,C*)の超過量を二乗和で √(=4次元矩形までの
+    ユークリッド距離)。小さいほど合う。
 
     Args:
         applied_lab: dict {L,a,b} または [L,a,b]/(L,a,b)
-        pc_season: PC_LIPSTICK_TARGETS のキー("イエベ春" 等)
+        pc_season: PC_LIPSTICK_TARGETS のキー("イエベ春" 等)。未知なら None を返す。
     """
     if pc_season not in PC_LIPSTICK_TARGETS:
-        raise KeyError(f"未知の pc_season: {pc_season}. "
-                       f"許容: {list(PC_LIPSTICK_TARGETS)}")
+        return None
     if isinstance(applied_lab, dict):
         L, a, b = float(applied_lab["L"]), float(applied_lab["a"]), float(applied_lab["b"])
     else:
@@ -215,7 +237,14 @@ def compute_pc_score(applied_lab, pc_season):
     dL = _axis_outside_distance(L, *t["L_range"])
     da = _axis_outside_distance(a, *t["a_range"])
     db = _axis_outside_distance(b, *t["b_range"])
-    return float((dL * dL + da * da + db * db) ** 0.5)
+    # 清濁(C*)条件
+    C = float((a * a + b * b) ** 0.5)
+    dC = 0.0
+    if "C_min" in t and C < t["C_min"]:
+        dC = t["C_min"] - C
+    elif "C_max" in t and C > t["C_max"]:
+        dC = C - t["C_max"]
+    return float((dL * dL + da * da + db * db + dC * dC) ** 0.5)
 
 # 反射率を (EPS, 1-EPS) に収めて 0/1 での発散を避ける
 EPS = 1e-6

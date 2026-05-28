@@ -175,11 +175,14 @@ delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
 **★PC(パーソナルカラー)連携 — 採用方針(2-a 論文ベース Lab 領域)**
 - カタログの `pc_season` タグは**ロジックに使わない**(=「答え」を使わない)。
   **答え合わせ用に保持**(catalog_pc_tags でレスポンスに同梱、UI に小さく参考表示)。
-- `km.PC_LIPSTICK_TARGETS`: 4PC × {L_range, a_range, b_range, description, sources}
-  を論文/色彩学指針で定義(Weatherall&Coombs 1992, Rees 2003, Del Bino&Bernerd 2013,
-  業界一般指針 coral/terracotta/rose/burgundy)。
-- `km.compute_pc_score(applied_lab, pc_season)`: applied が領域内なら 0、外なら
-  各軸超過量の二乗和の√(=矩形までのユークリッド距離)。小さいほど合う。
+- `km.PC_LIPSTICK_TARGETS`: 4PC × **{L,a,b 範囲 + C\*(彩度)の C_min/C_max(清濁)}**
+  を論文/色彩学指針で定義。日本流PCの「色相・明度・彩度・**清濁**」4軸を再現。
+  清色(春・冬)=C_min を課す、濁色(夏・秋)=C_max を課す。
+  出典: **Color Me Beautiful (Jackson 1980)** 清濁理論、日本流 NPCA、Weatherall&Coombs
+  1992、Rees 2003、Del Bino&Bernerd 2013、業界一般指針 coral/terracotta/rose/burgundy。
+- `km.compute_chroma(lab) = √(a²+b²)` で C* を計算。
+- `km.compute_pc_score(applied_lab, pc_season)`: applied が(L,a,b 矩形 ∩ C* 帯)内なら 0、
+  外なら 4次元 ユークリッド距離。未知 PC は `None`。
 - `/evaluate`(新)+ `evaluate_all.py`(バッチ): 「予測 TOP-N 中、カタログタグに
   expected_pc or イエベ・ブルベ問わずを含む割合」を測る妥当性メトリクス。
   MVP 合格ライン 0.70。**初回測定: 全平均 0.750 (good)** をクリア。
