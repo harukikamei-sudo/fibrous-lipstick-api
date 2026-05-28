@@ -144,6 +144,36 @@ def load_lip_image(preset_name):
 
 # ============ 色合成(唇領域に applied_lab を乗せる) ============
 
+def measure_lip_lab(rgb_uint8, alpha, alpha_min=0.7):
+    """唇マスクのコア領域(α>alpha_min)から代表 Lab を中央値で算出。
+
+    羽化された縁を避けて唇の本体だけを採るため α しきい値は高めに(0.7)。
+    """
+    core = alpha >= alpha_min
+    if not core.any():
+        core = alpha > 0
+    lab = skcolor.rgb2lab(rgb_uint8.astype(float) / 255.0)
+    pix = lab[core]
+    L, a, b = np.median(pix, axis=0)
+    return np.array([float(L), float(a), float(b)])
+
+
+def list_lip_photos():
+    """assets/lips にある利用可能な唇写真をリスト。
+
+    Returns: list[(key, label)]。key は load_lip_image() 用の識別子。
+      'model'        : 共用 model.png
+      'preset:<name>': lip_<name>.png(プリセット個別)
+    """
+    found = []
+    if os.path.exists(os.path.join(ASSETS_LIPS, "model.png")):
+        found.append(("model", "実写モデル (model.png)"))
+    for name in km.LIP_PRESETS:
+        if os.path.exists(os.path.join(ASSETS_LIPS, f"lip_{name}.png")):
+            found.append((f"preset:{name}", f"プリセット個別: {name}"))
+    return found
+
+
 def composite_lip(rgb_uint8, alpha, applied_lab, l_blend=0.5):
     """唇に applied_lab を塗る(顔・周辺はそのまま残す)。
 
@@ -171,13 +201,25 @@ def main():
     st.title("💄 唇に塗ったらこう見える — 口紅レコメンド (Lv2)")
     st.caption("唇の色を選ぶと、全商品を『塗った後の色』で計算し、唇画像に合成して近い順に表示。")
 
+    photos = list_lip_photos()
+
     with st.sidebar:
         st.header("条件")
         api_base = st.text_input("API ベースURL", DEFAULT_API).rstrip("/")
 
-        lip_key = st.selectbox("唇の色(下地)", list(km.LIP_PRESETS), index=1)
-        lip_lab = km.LIP_PRESETS[lip_key]
-        st.markdown(chip(lip_lab, f"{lip_key}  Lab={lip_lab}"), unsafe_allow_html=True)
+        # 唇画像の選択(写真がある時は写真ベース=計算と表示が一致。
+        # 無い時のみダミー+プリセット Lab にフォールバック)
+        if photos:
+            keys = [k for k, _ in photos]
+            labels = [lab for _, lab in photos]
+            sel = st.selectbox("唇画像", labels, index=0)
+            photo_key = keys[labels.index(sel)]
+            preset_for_dummy = None
+        else:
+            st.info("assets/lips に写真が無いのでダミー唇を使います")
+            photo_key = None
+            preset_for_dummy = st.selectbox(
+                "ダミー唇の色(プリセット)", list(km.LIP_PRESETS), index=1)
 
         t = st.slider("塗り厚 t(塗り重ね量)", 0.1, 3.0, 1.0, 0.1)
         l_blend = st.slider("質感ブレンド(L)", 0.0, 1.0, 0.5, 0.05,
@@ -195,14 +237,36 @@ def main():
 
         run = st.button("レコメンド", type="primary", use_container_width=True)
 
-    # 選択中の唇画像(プレビュー)
-    lip_rgb, lip_alpha = load_lip_image(lip_key)
-    src_label = {"preset": "プリセット実写", "model": "実写モデル(共用)",
-                 "dummy": "ダミー生成"}[lip_image_source(lip_key)]
+    # 唇画像のロードと「下地 Lab」決定
+    # 写真がある場合: 画像の唇領域から Lab を実測 → 計算の下地と表示が一致
+    # 写真が無い場合: プリセット Lab からダミー生成(プリセット = 描画色 = 下地)
+    if photo_key == "model":
+        lip_rgb, lip_alpha = _read_rgba(os.path.join(ASSETS_LIPS, "model.png"))
+        lip_lab = measure_lip_lab(lip_rgb, lip_alpha).tolist()
+        src_label = "実写モデル(共用)"
+        credit = MODEL_CREDIT
+    elif photo_key and photo_key.startswith("preset:"):
+        name = photo_key.split(":", 1)[1]
+        lip_rgb, lip_alpha = _read_rgba(os.path.join(ASSETS_LIPS, f"lip_{name}.png"))
+        lip_lab = measure_lip_lab(lip_rgb, lip_alpha).tolist()
+        src_label = f"プリセット個別: {name}"
+        credit = None
+    else:
+        lip_rgb, lip_alpha = _dummy_lip(preset_for_dummy)
+        lip_lab = list(km.LIP_PRESETS[preset_for_dummy])  # ダミーの描画色=下地
+        src_label = f"ダミー({preset_for_dummy})"
+        credit = None
+
     with st.sidebar:
         st.image(lip_rgb, caption=f"唇画像: {src_label}", use_container_width=True)
-        if lip_image_source(lip_key) == "model":
-            st.caption(MODEL_CREDIT)
+        st.markdown(
+            "**下地 Lab(写真から実測)**" if photo_key
+            else "**下地 Lab(プリセット)**", unsafe_allow_html=True)
+        st.markdown(
+            chip(lip_lab, f"L={lip_lab[0]:.1f} a={lip_lab[1]:.1f} b={lip_lab[2]:.1f}"),
+            unsafe_allow_html=True)
+        if credit:
+            st.caption(credit)
 
     if not run:
         st.info("← サイドバーで唇の色を選んで「レコメンド」を押してください。")
