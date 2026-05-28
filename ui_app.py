@@ -25,6 +25,7 @@ import numpy as np
 import requests
 import streamlit as st
 from PIL import Image, ImageDraw
+from scipy import ndimage as ndi
 from skimage import color as skcolor
 
 from lab_utils import lab_to_rgb
@@ -36,6 +37,25 @@ ASSETS_LIPS = os.path.join(os.path.dirname(__file__), "assets", "lips")
 BG = (245, 245, 245)   # 唇以外(非マスク)の表示背景
 # model.png の出所(現在は Public Domain なので帰属義務は無いが透明性のため表示)
 MODEL_CREDIT = '唇画像: "Mouth.jpg" (Wikimedia Commons, Public Domain)'
+
+# 仕上げカテゴリ → 表示時の質感の強さ(テカリ/陰の偏差保持量)。
+# matte は控えめに潰してマット感、gloss は強めに残してツヤ感を出す。
+# 1.0 が「元写真の陰影そのまま」=ニュートラル。
+TEXTURE_BY_CATEGORY = {
+    "matte":  0.75,  # マット = 控えめだが潰しすぎない
+    "velvet": 0.9,   # 半マット
+    "tint":   1.0,   # 元の質感のまま
+    "gloss":  1.5,   # グロス = テカリ強調
+    "other":  1.0,   # 不明はニュートラル
+}
+
+# 塗り重ね回数 → 塗り厚 t (規約: 1度塗り = t1 = 0.3)
+COAT_OPTIONS = {
+    "1度塗り(薄)":      0.3,
+    "2度塗り(普通)":    0.6,
+    "3度塗り(しっかり)": 0.9,
+    "塗り重ね(厚塗り)": 1.5,
+}
 
 
 # ============ 色ユーティリティ ============
@@ -110,6 +130,38 @@ def _dummy_lip(preset_name, w=400, h=300):
     return rgb_s.astype(np.uint8), al
 
 
+def extract_lip_mask(rgb_uint8, central_bbox=(0.34, 0.66, 0.49, 0.67),
+                     a_min=18, chroma_min=22, L_min=25, L_max=70,
+                     erosion=1, sigma=2.4):
+    """RGB 画像から唇の羽化αマスク(0-1 float, HxW)を自動抽出。
+
+    顔の正面ポートレート(背景わずか、唇が画面中央下あたり)を想定。
+    Lab の彩度しきい値で唇候補画素を抽出 → 中央領域に限定 → 最大連結成分
+    → 穴埋め → 縁を少し縮める → ガウス羽化。default 値は assets/lips/model.png
+    の構築に使ったものと同じ(再現性のため)。
+    """
+    arr = rgb_uint8
+    H, W = arr.shape[:2]
+    lab = skcolor.rgb2lab(arr.astype(float) / 255.0)
+    a = lab[..., 1]; b = lab[..., 2]
+    chroma = np.hypot(a, b); L = lab[..., 0]
+    x0, x1, y0, y1 = central_bbox
+    yy, xx = np.mgrid[0:H, 0:W]
+    central = (xx > W * x0) & (xx < W * x1) & (yy > H * y0) & (yy < H * y1)
+    m = (a > a_min) & (chroma > chroma_min) & (L > L_min) & (L < L_max) & central
+    lbl, n = ndi.label(m)
+    if n == 0:
+        return np.zeros((H, W), dtype=float)
+    sz = ndi.sum(np.ones_like(lbl), lbl, range(1, n + 1))
+    m = lbl == (np.argmax(sz) + 1)
+    m = ndi.binary_fill_holes(m)
+    m = ndi.binary_closing(m, iterations=2)
+    if erosion > 0:
+        m = ndi.binary_erosion(m, iterations=erosion)
+    alpha = np.clip(ndi.gaussian_filter(m.astype(float), sigma=sigma), 0, 1)
+    return alpha
+
+
 def _read_rgba(path):
     """RGBA PNG → (rgb_uint8, alpha 0-1)。α 無しは全面=唇(1.0)。"""
     arr = np.asarray(Image.open(path).convert("RGBA"))
@@ -174,22 +226,58 @@ def list_lip_photos():
     return found
 
 
-def composite_lip(rgb_uint8, alpha, applied_lab, l_blend=0.5):
-    """唇に applied_lab を塗る(顔・周辺はそのまま残す)。
+@st.dialog("塗布シミュレーション(拡大表示)", width="large")
+def show_zoom_dialog(comp_img, lip_rgb_before, name, line_category, deltaE,
+                     product_id, orig_lab, appl_lab,
+                     pc_score=None, catalog_pc_tags=None):
+    """TOP-N のカードをクリックした時の拡大モーダル。before/after 並べる。"""
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**素の唇 (Before)**")
+        st.image(lip_rgb_before, use_container_width=True)
+    with c2:
+        st.markdown(f"**塗布後 (After)**")
+        st.image(comp_img, use_container_width=True)
+    st.markdown(f"### {name}")
+    score_line = (f"PC スコア = **{pc_score}**(小さいほど合う)"
+                  if pc_score is not None else f"ΔE = **{deltaE}**")
+    st.markdown(f"カテゴリ `{line_category}` / {score_line} / id `{product_id}`")
+    if catalog_pc_tags:
+        st.caption(f"(参考)カタログ pc_season タグ: {', '.join(catalog_pc_tags)}  "
+                   "← 推奨ロジックには未使用(答え合わせ用)")
+    c3, c4 = st.columns(2)
+    with c3:
+        st.caption(f"商品本来 Lab = ({orig_lab[0]:.1f}, {orig_lab[1]:.1f}, {orig_lab[2]:.1f})")
+        st.markdown(chip(orig_lab, ""), unsafe_allow_html=True)
+    with c4:
+        st.caption(f"塗布後 Lab  = ({appl_lab[0]:.1f}, {appl_lab[1]:.1f}, {appl_lab[2]:.1f})")
+        st.markdown(chip(appl_lab, ""), unsafe_allow_html=True)
 
-    全画素を Lab で「L は元と applied_lab を (1-l_blend):l_blend ブレンド(陰影/質感を
-    残す)、a,b は applied_lab で置換」して再着色し、α(唇マスク, 0-1)で元画像と合成する。
-    α が羽化されているので唇の縁が自然に馴染む。
+
+def composite_lip(rgb_uint8, alpha, applied_lab, texture_strength=1.0):
+    """唇に applied_lab を塗る(顔/周辺はそのまま残す)。
+
+    L の扱い: 唇マスク内の L 平均からの**偏差**(=ハイライト/陰のテカリ・凹凸成分)を
+    保持したまま、平均だけ applied_lab.L にシフトする。
+        L_new = L_applied + texture_strength × (L_orig - mean_in_lip(L_orig))
+    texture_strength: 0=フラット(L_applied一色で凹凸消える)、1=元の質感そのまま、
+                     >1=テカリ/陰を強調。
+    a,b は applied_lab で置換。α で元画像と合成し、唇の縁を自然に馴染ませる。
     """
     base = rgb_uint8.astype(float) / 255.0
     lab = skcolor.rgb2lab(base)
+    L_orig = lab[..., 0]
+    mw = np.clip(alpha, 0.0, 1.0).astype(float)
+    w_sum = float(mw.sum())
+    L_mean = (L_orig * mw).sum() / w_sum if w_sum > 0 else float(L_orig.mean())
+    L_app, a_app, b_app = (float(applied_lab[0]), float(applied_lab[1]),
+                           float(applied_lab[2]))
     rec = lab.copy()
-    L, a, b = float(applied_lab[0]), float(applied_lab[1]), float(applied_lab[2])
-    rec[..., 0] = (1 - l_blend) * lab[..., 0] + l_blend * L
-    rec[..., 1] = a
-    rec[..., 2] = b
+    rec[..., 0] = L_app + texture_strength * (L_orig - L_mean)
+    rec[..., 1] = a_app
+    rec[..., 2] = b_app
     rec_rgb = np.clip(skcolor.lab2rgb(rec), 0, 1)
-    a3 = np.clip(alpha, 0.0, 1.0)[..., None]
+    a3 = mw[..., None]
     out = rec_rgb * a3 + base * (1 - a3)
     return (out * 255).astype(np.uint8)
 
@@ -207,23 +295,39 @@ def main():
         st.header("条件")
         api_base = st.text_input("API ベースURL", DEFAULT_API).rstrip("/")
 
-        # 唇画像の選択(写真がある時は写真ベース=計算と表示が一致。
-        # 無い時のみダミー+プリセット Lab にフォールバック)
-        if photos:
+        # 唇画像のソース選択: アップロード優先 → 既定写真 → ダミー
+        source_options = ["アップロード"]
+        if photos: source_options.append("既定の写真")
+        source_options.append("ダミー生成")
+        source = st.radio("唇画像のソース", source_options, horizontal=True,
+                          index=0 if photos else (len(source_options) - 1))
+
+        uploaded = None; photo_key = None; preset_for_dummy = None
+        if source == "アップロード":
+            uploaded = st.file_uploader(
+                "顔写真をアップロード(正面ポートレート推奨)",
+                type=["jpg", "jpeg", "png", "webp"],
+                help="中央下に唇が写った正面写真でうまく動きます。背景がシンプルだとなお良し。")
+            if uploaded is None:
+                st.caption("⬆️ ここに画像をドロップ。アップロードしない場合は他のソースを選択")
+        elif source == "既定の写真":
             keys = [k for k, _ in photos]
             labels = [lab for _, lab in photos]
-            sel = st.selectbox("唇画像", labels, index=0)
+            sel = st.selectbox("画像", labels, index=0)
             photo_key = keys[labels.index(sel)]
-            preset_for_dummy = None
         else:
-            st.info("assets/lips に写真が無いのでダミー唇を使います")
-            photo_key = None
             preset_for_dummy = st.selectbox(
                 "ダミー唇の色(プリセット)", list(km.LIP_PRESETS), index=1)
 
-        t = st.slider("塗り厚 t(塗り重ね量)", 0.1, 3.0, 1.0, 0.1)
-        l_blend = st.slider("質感ブレンド(L)", 0.0, 1.0, 0.5, 0.05,
-                            help="0=元の唇の明暗を完全保持 / 1=塗布後Lで塗りつぶし")
+        coat_label = st.radio("塗り重ね", list(COAT_OPTIONS), index=1,
+                              help="マット/ベルベットは1〜2度で十分発色、ティント/グロスは重ねるほど深まる")
+        t = COAT_OPTIONS[coat_label]
+        pc_sel = st.selectbox(
+            "あなたのパーソナルカラー",
+            ["(指定なし)"] + list(km.PC_SEASONS),
+            help="指定すると論文ベースの理想Lab領域に近い順にランク付け(カタログタグは未使用)"
+        )
+        pc_season = None if pc_sel == "(指定なし)" else pc_sel
         cat = st.selectbox("仕上げで絞り込み", ["(指定なし)"] + list(km.LINE_CATEGORIES))
         top_n = st.slider("表示件数", 1, 10, 5)
 
@@ -238,12 +342,22 @@ def main():
         run = st.button("レコメンド", type="primary", use_container_width=True)
 
     # 唇画像のロードと「下地 Lab」決定
-    # 写真がある場合: 画像の唇領域から Lab を実測 → 計算の下地と表示が一致
-    # 写真が無い場合: プリセット Lab からダミー生成(プリセット = 描画色 = 下地)
-    if photo_key == "model":
+    if source == "アップロード":
+        if uploaded is None:
+            st.info("⬅️ サイドバーで顔写真をアップロードしてください。")
+            return
+        lip_rgb = np.asarray(Image.open(uploaded).convert("RGB"))
+        lip_alpha = extract_lip_mask(lip_rgb)
+        if lip_alpha.sum() < 100:
+            st.error("唇マスクを抽出できませんでした。正面・中央下に唇が写った写真を試してください。")
+            return
+        lip_lab = measure_lip_lab(lip_rgb, lip_alpha).tolist()
+        src_label = f"アップロード ({uploaded.name})"
+        credit = "⚠️ アップロード画像のライセンスは利用者が確認すること"
+    elif photo_key == "model":
         lip_rgb, lip_alpha = _read_rgba(os.path.join(ASSETS_LIPS, "model.png"))
         lip_lab = measure_lip_lab(lip_rgb, lip_alpha).tolist()
-        src_label = "実写モデル(共用)"
+        src_label = "既定モデル"
         credit = MODEL_CREDIT
     elif photo_key and photo_key.startswith("preset:"):
         name = photo_key.split(":", 1)[1]
@@ -268,41 +382,68 @@ def main():
         if credit:
             st.caption(credit)
 
-    if not run:
-        st.info("← サイドバーで唇の色を選んで「レコメンド」を押してください。")
+    # レコメンド ボタンで API を叩き、結果を session_state に保存
+    # (zoom ボタン等の再実行を跨いで保持。l_blend/t 変更時は再API呼び出し不要で
+    #  画像だけ即時更新可能)
+    if run:
+        payload = {"lip_lab": {"L": lip_lab[0], "a": lip_lab[1], "b": lip_lab[2]},
+                   "t": t, "top_n": top_n}
+        if cat != "(指定なし)":
+            payload["line_category"] = cat
+        if target_lab is not None:
+            payload["target_lab"] = {"L": target_lab[0], "a": target_lab[1],
+                                     "b": target_lab[2]}
+        if pc_season is not None:
+            payload["pc_season"] = pc_season
+        try:
+            res = requests.post(f"{api_base}/recommend", json=payload, timeout=60)
+            if res.status_code != 200:
+                st.error(f"API エラー {res.status_code}: {res.text[:300]}")
+                return
+            st.session_state["recs"] = res.json()
+            st.session_state["recs_target_used"] = target_lab is not None
+            st.session_state["recs_pc_used"] = pc_season
+        except requests.RequestException as e:
+            st.error(f"API 呼び出し失敗: {e}")
+            return
+
+    if "recs" not in st.session_state:
+        st.info("← サイドバーで条件を選んで「レコメンド」を押してください。")
         return
 
-    payload = {"lip_lab": {"L": lip_lab[0], "a": lip_lab[1], "b": lip_lab[2]},
-               "t": t, "top_n": top_n}
-    if cat != "(指定なし)":
-        payload["line_category"] = cat
-    if target_lab is not None:
-        payload["target_lab"] = {"L": target_lab[0], "a": target_lab[1], "b": target_lab[2]}
-
-    try:
-        res = requests.post(f"{api_base}/recommend", json=payload, timeout=60)
-    except requests.RequestException as e:
-        st.error(f"API 呼び出し失敗: {e}")
-        return
-    if res.status_code != 200:
-        st.error(f"API エラー {res.status_code}: {res.text[:300]}")
-        return
-
-    data = res.json()
-    sort_mode = "目標色に近い順" if target_lab is not None else "唇に近い(自然な)順"
+    data = st.session_state["recs"]
+    method = data.get("filter_method", "")
+    if method == "pc_season_target_region":
+        sort_mode = f"PC「{data.get('pc_season')}」の理想Lab領域に近い順(論文ベース)"
+    elif method == "delta_e_to_target":
+        sort_mode = "目標色に近い順"
+    else:
+        sort_mode = "唇に近い(自然な)順"
     st.subheader(f"TOP {len(data['results'])}  (候補 {data['count']} 件中)")
-    st.caption(f"並べ替え: {sort_mode} / 塗り厚 t={t} / 質感ブレンド={l_blend}")
+    st.caption(f"並べ替え: {sort_mode} / {coat_label} / 質感はカテゴリで自動  "
+               f"💡 各画像下の「🔍 拡大」で詳細表示")
 
     cols = st.columns(min(len(data["results"]), 5))
     for i, it in enumerate(data["results"]):
         appl = [it["applied_lab"]["L"], it["applied_lab"]["a"], it["applied_lab"]["b"]]
         orig = [it["original_lab"]["L"], it["original_lab"]["a"], it["original_lab"]["b"]]
-        comp = composite_lip(lip_rgb, lip_alpha, appl, l_blend=l_blend)
+        ts = TEXTURE_BY_CATEGORY.get(it["line_category"], 1.0)
+        comp = composite_lip(lip_rgb, lip_alpha, appl, texture_strength=ts)
         with cols[i % len(cols)]:
             st.image(comp, use_container_width=True)
             st.markdown(f"**{i+1}. {it['name']}**")
-            st.caption(f"`{it['line_category']}` ΔE={it['delta_e']} / {it['id']}")
+            pc_part = (f" / PC={it['pc_score']}" if it.get("pc_score") is not None
+                       else f" / ΔE={it['delta_e']}")
+            st.caption(f"`{it['line_category']}`{pc_part} / {it['id']}")
+            tags = it.get("catalog_pc_tags") or []
+            if tags:
+                st.caption(f"(参考)サイトタグ: {', '.join(tags)}")
             st.markdown(chip(orig, "商品本来"), unsafe_allow_html=True)
+            if st.button("🔍 拡大", key=f"zoom_{i}", use_container_width=True):
+                show_zoom_dialog(comp, lip_rgb, it["name"], it["line_category"],
+                                 it["delta_e"], it["id"], orig, appl,
+                                 pc_score=it.get("pc_score"),
+                                 catalog_pc_tags=tags)
 
 
 if __name__ == "__main__":

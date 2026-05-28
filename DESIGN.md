@@ -259,6 +259,67 @@ out = α·rec + (1-α)·base
 
 ---
 
+## 6.6 パーソナルカラー(PC)連携 — 論文ベース Lab 領域マッチング
+
+### 方針(採用 / 不採用)
+- **不採用**: カタログの `pc_season` タグでフィルタする(=「答え」を直接利用する)。
+- **採用(2-a)**: PC 別に「**理想的な唇色 Lab 領域**」を論文/色彩学指針で定義し、
+  シミュ結果 `applied_lab` が領域からどれだけ離れているかでランク付け。
+  カタログタグは「答え合わせ用」として保持し、推奨ロジックには使わない。
+
+### `km.PC_LIPSTICK_TARGETS`(km.py)
+4 PC × {L_range, a_range, b_range, description, sources} の辞書。例(イエベ春):
+
+| PC | L | a* | b* | 想定色 |
+|---|---|---|---|---|
+| イエベ春 | 55–75 | 25–50 | 15–35 | コーラル/ピーチ/テラコッタ |
+| イエベ秋 | 35–55 | 20–40 | 15–30 | ブリック/テラコッタ/ウォームブラウン |
+| ブルベ夏 | 55–75 | 20–40 | -5–10 | ローズ/モーブ/ベリー |
+| ブルベ冬 | 30–50 | 35–60 | -5–15 | バーガンディ/ワイン/ディープベリー |
+
+**論文/指針 出典**:
+- Weatherall & Coombs 1992(b* 軸でのアンダートーン分類)
+- Rees 2003(高カロテノイド → ウォーム)
+- Del Bino & Bernerd 2013(高ヘモグロビン+低カロテノイド → クール)
+- Del Bino et al.(ITA based skin tone classification)
+- 業界一般指針: 春=コーラル / 秋=テラコッタ / 夏=ローズ / 冬=バーガンディ
+
+### `km.compute_pc_score(applied_lab, pc_season)`
+矩形領域からのユークリッド距離。領域内なら 0:
+```
+d_L = max(0, L_min-L, L-L_max)
+d_a = max(0, a_min-a, a-a_max)
+d_b = max(0, b_min-b, b-b_max)
+pc_score = √(d_L² + d_a² + d_b²)
+```
+**小さいほど PC に合う**。
+
+### /recommend の組み込み
+リクエストに `pc_season?` を追加。指定時:
+1. `sort_target = PC 領域の中心`(参考表示用)
+2. 全商品の applied_lab を計算 → `pc_score` を出す
+3. **pc_score 昇順で並べる**(同点は連続)
+4. レスポンス各項目に `pc_score / delta_e_to_lip / catalog_pc_tags`(参考)を含める
+未指定時は従来通り `delta_e_to_target` または `delta_e_to_lip`。
+
+### `/evaluate` + `evaluate_all.py`(妥当性測定)
+「論文ベース予測の TOP-N」と「カタログ `pc_season` タグ」の一致率:
+```
+matched = TOP-N 中、catalog_pc_tags に expected_pc または "イエベ・ブルベ問わず"
+          を含む件数
+match_rate = matched / N
+interpretation: ≥0.7 good / ≥0.5 acceptable / <0.5 poor
+```
+**MVP 合格ライン = 0.70。初回バッチ(5唇プリセット × 4PC = 20組) 全平均 0.750(good)**。
+イエベ秋のみ 0.40〜0.50 で要チューニング(L 領域が春と被る)。
+
+### 役割分担
+- **Kawano**: 写真 → 唇 Lab + PC 判定(撮影/分類担当)
+- **Haruki**: 唇 Lab + PC を入力に、論文ベース推奨ロジックを構築(本実装)
+- カタログ `pc_season` タグはあくまで「答え合わせ用」
+
+---
+
 ## 7. 校正の実証結果と知見
 
 | 項目 | 結果 |
