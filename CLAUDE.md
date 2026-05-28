@@ -47,10 +47,12 @@ fibrous-lipstick-api/
 │                      α(唇マスク,羽化)で元画像と合成→顔は残し唇だけ自然に色変え。
 │                      `pip install -r requirements-ui.txt && streamlit run ui_app.py`
 │                      API 本体とは別依存(requirements-ui.txt)。HF には載せない(ローカル用)
-├── assets/lips/       唇画像。model.png=★素の唇 実写(Wikimedia "Mouth.jpg"/Public Domain。
-│                      唇周辺をクロップ+2x LANCZOS拡大、α=色しきい値で唇マスク自動抽出+羽化)。
-│                      実測 Lab≈(54,24,-4)=自然な下地 → /recommend の substrate に直接利用。
-│                      lip_<preset>.png があれば個別優先。両方無ければダミー生成。CREDITS.txt 参照
+├── assets/lips/       唇画像。**git 追跡しない方針**(*.png 等を gitignore。HF の binary
+│                      ポリシーに抵触、UI 専用なので API 側に無くてよい)。
+│                      ローカル運用: 任意の正面顔写真を `model.png` として置けば
+│                      ui_app.extract_lip_mask が自動でマスクを抽出して使う。
+│                      アップロードモード(UI)なら配置不要(画面ドロップで都度処理)。
+│                      置かなければダミー楕円唇にフォールバック。CREDITS.txt 参照。
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)
@@ -275,6 +277,19 @@ delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
 - HF Space のレート制限・ログ監視 (現状無し)
 - products.csv の更新フロー (新商品追加時)
 - auto_low の QA UI (Streamlit でサムネ並べる等)
+
+## 画像アセット管理ポリシー(履歴書き換え事件 後)
+
+- **assets/lips/*.{png,jpg,jpeg,webp} は git 追跡しない**(`.gitignore` 済)。
+- 理由: HF Spaces の binary サイズポリシーで >1MB の PNG が push 拒否される。
+  過去に CC BY 3.0 / PD の model.png をコミットしたが、HF push 不可で履歴書き換え
+  (filter-branch)で完全削除。復旧用タグ `backup-before-history-rewrite` を origin
+  に残してある(過去SHA 6628c3a を指す)。
+- 運用:
+  - **デフォルト = アップロードモード**(UI のドロップで都度処理、ファイル保存無し)
+  - 固定モデルが欲しい時は `assets/lips/model.png` をローカル配置(git 追跡されない)
+  - 画像が無ければ `_dummy_lip` が楕円唇を動的生成
+- 将来真面目に共有するなら HF Hub Xet ストレージ経由(README 参照)。
 
 ## トリビア・注意
 

@@ -15,4 +15,10 @@ thumbnails/
 before_lab.json
 summary*.md
 unzipped/
-assets/lips/model.png
+# UI 用画像はバイナリサイズが HF Spaces のポリシーに抵触しがちなので
+# 原則 git 追跡しない(ローカルで配置 or ダミー生成で動作)。
+# 必要なら HF Hub Xet ストレージ経由で別管理する(README 参照)。
+assets/lips/*.png
+assets/lips/*.jpg
+assets/lips/*.jpeg
+assets/lips/*.webp
