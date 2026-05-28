@@ -246,8 +246,16 @@ out = α·rec + (1-α)·base
 将来 Kawano さんデータは `load_lip_image` の内部だけ差し替え(インターフェース固定)。
 
 ### 6.4 素材と権利
-`model.png` = Wikimedia Commons "My Red Lips" by Trina(**CC BY 3.0**)。
-帰属は `assets/lips/CREDITS.txt` と UI 上クレジット表示で CC BY に準拠。
+`model.png` = Wikimedia Commons **"Mouth.jpg"(Public Domain)**。素の唇(化粧無し)を選定し、
+唇周辺をクロップ+2x LANCZOS 拡大、α=色しきい値で唇マスク自動抽出+羽化。実測 Lab ≈ (54, 24, -4)
+=自然な下地。PD のため帰属義務は無いが `CREDITS.txt` と UI で出所を明示。
+
+### 6.5 計算と表示の一致(オプション B 採用)
+`measure_lip_lab(rgb, alpha)` で唇マスクのコア(α≥0.7)から **代表 Lab を中央値で算出**し、
+それを /recommend の `lip_lab`(K-M 下地 R_g)として使う ⇒ **「表示している唇のLab」と
+「計算上の下地」が一致**。写真が無い時のみダミー+プリセット Lab にフォールバック。
+(過去経緯: 当初は写真=キャンバス/プリセット=下地で不一致 → 一致のため B を採用 →
+最初の model は CC BY 3.0 で唇が既に口紅塗布済み(L≈44, a≈48)だったので、素の唇 PD に差替)。
 
 ---
 

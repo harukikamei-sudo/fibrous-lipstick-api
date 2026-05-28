@@ -34,8 +34,8 @@ import km
 DEFAULT_API = "https://tamable-fibrous-lipstick-api.hf.space"
 ASSETS_LIPS = os.path.join(os.path.dirname(__file__), "assets", "lips")
 BG = (245, 245, 245)   # 唇以外(非マスク)の表示背景
-# model.png の帰属(CC BY 3.0 はクレジット表示が必要)
-MODEL_CREDIT = '唇画像: "My Red Lips" by Trina — CC BY 3.0 / Wikimedia Commons'
+# model.png の出所(現在は Public Domain なので帰属義務は無いが透明性のため表示)
+MODEL_CREDIT = '唇画像: "Mouth.jpg" (Wikimedia Commons, Public Domain)'
 
 
 # ============ 色ユーティリティ ============

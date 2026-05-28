@@ -47,10 +47,10 @@ fibrous-lipstick-api/
 │                      α(唇マスク,羽化)で元画像と合成→顔は残し唇だけ自然に色変え。
 │                      `pip install -r requirements-ui.txt && streamlit run ui_app.py`
 │                      API 本体とは別依存(requirements-ui.txt)。HF には載せない(ローカル用)
-├── assets/lips/       唇画像。model.png=実写モデル(Wikimedia "My Red Lips"/CC BY 3.0、
-│                      α=色しきい値で自動抽出した唇マスク。全プリセット共用)。
-│                      lip_<preset>.png があればプリセット個別優先。両方無ければダミー生成。
-│                      CREDITS.txt に帰属、UI にもクレジット表示(CC BY 準拠)
+├── assets/lips/       唇画像。model.png=★素の唇 実写(Wikimedia "Mouth.jpg"/Public Domain。
+│                      唇周辺をクロップ+2x LANCZOS拡大、α=色しきい値で唇マスク自動抽出+羽化)。
+│                      実測 Lab≈(54,24,-4)=自然な下地 → /recommend の substrate に直接利用。
+│                      lip_<preset>.png があれば個別優先。両方無ければダミー生成。CREDITS.txt 参照
 ├── test_dark_swatch.py ダーク系維持テスト
 ├── sample_gas.gs      GAS サンプル (参考実装、ユーザーはこれを参考に自前で書く予定)
 ├── verify_batch.py    公開 API バッチ動作確認用 (CPU basic だと 50件は timeout、10件刻みなら可)

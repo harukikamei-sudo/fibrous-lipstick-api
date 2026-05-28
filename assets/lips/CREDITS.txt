@@ -1,7 +1,6 @@
 model.png
-  source: Wikimedia Commons — File:My Red Lips (94322501).jpeg
-  page: https://commons.wikimedia.org/wiki/File:My_Red_Lips_(94322501).jpeg
-  author: 
-Trina
-  license: CC BY 3.0
-  credit: Imported from 500px (archived version) by the Archive Team. (detail page)
+  source: Wikimedia Commons — File:Mouth.jpg
+  page: https://commons.wikimedia.org/wiki/File:Mouth.jpg
+  license: Public Domain
+  note: 加工=唇周辺を切り出し、LANCZOSで2倍拡大、α=色しきい値で唇マスクを自動抽出し羽化
+  rationale: 素の唇(化粧無し)で K-M 下地が自然な Lab(L≈54, a≈23) になるよう選定
