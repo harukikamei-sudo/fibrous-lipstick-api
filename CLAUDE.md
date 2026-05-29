@@ -3,11 +3,11 @@
 > このファイルは Claude Code が起動時に自動で読む。プロジェクトの前後関係を
 > 即座に把握できるよう簡潔にまとめてある。
 >
+> **新セッションは [HANDOFF.md](HANDOFF.md) を最初に読む**(直近の状態+未解決事項を集約)。
 > **理論・式の導出・計算過程・なぜその値か は [DESIGN.md](DESIGN.md)(ロジック設計書)** に集約。
 > **API の使い方(curl 例・レスポンス例)は [API_GUIDE.md](API_GUIDE.md)**。
 > **各意思決定の背景・失敗試行・採用根拠は [LOG.md](LOG.md)(開発ログ)** に時系列で残す。
-> CLAUDE.md=運用/進捗/申し送り、DESIGN.md=数理の根拠、API_GUIDE.md=エンドポイント実用書、
-> LOG.md=「なぜそうした/しなかった」の物語。
+> HANDOFF=最新引き継ぎ、CLAUDE=運用/進捗、DESIGN=数理、API_GUIDE=エンドポイント、LOG=決定物語。
 
 ## プロジェクト概要
 
@@ -68,6 +68,7 @@ fibrous-lipstick-api/
 ├── Dockerfile         python:3.11-slim + libgl1 + 7860
 ├── requirements.txt
 ├── README.md          HF Spaces 用フロントマター付き
+├── HANDOFF.md         ★★新セッション起点(直近状態・設計書ギャップ・未解決事項)
 ├── DESIGN.md          ★ロジック設計書(理論/式の導出/計算過程/コード対応)
 ├── API_GUIDE.md       ★API 使い方ガイド(全エンドポイントの curl 例+レスポンス例)
 ├── LOG.md             ★開発ログ(各意思決定の目的/試行/失敗/採用根拠を時系列で)
