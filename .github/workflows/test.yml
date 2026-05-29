@@ -1,0 +1,54 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system deps (libGL for opencv/skimage on headless Linux)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libgl1
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install httpx  # TestClient backend
+
+      - name: Run test_km.py
+        run: python test_km.py
+
+      - name: Run test_lab_utils.py
+        run: python test_lab_utils.py
+
+      - name: Run test_bayesian.py
+        run: python test_bayesian.py
+
+      - name: Run test_recommend_v2.py
+        run: python test_recommend_v2.py
+
+      - name: Run test_v13_endpoints.py
+        run: python test_v13_endpoints.py
+
+      - name: Run test_v13_flow.py (E2E)
+        run: python test_v13_flow.py

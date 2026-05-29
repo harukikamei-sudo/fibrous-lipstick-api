@@ -427,5 +427,229 @@ cd ~/Desktop/fibrous-lipstick-api
 
 ---
 
+# v1.3 個人化学習層 API (`/v13/*`)
+
+> 設計書 v1.3 に基づく個人化推薦の 4 エンドポイント。詳細仕様は
+> [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) / [KAWANO_HANDOFF.md](KAWANO_HANDOFF.md) も参照。
+
+## 0. v1.3 API の流れ
+
+```
+[初回診断]
+  ① GET  /v13/pair_compare/init     → 10 ペア取得
+  ② POST /v13/pair_compare/apply    → 4 θ の事前分布
+  caller は ① の選択を ② に送る、返ってきた θ で UserState を組み立てて保存
+
+[AR 試着ループ]
+  ③ POST /v13/recommend             → TOP-N(effective_Lab を AR で表示)
+  ④ POST /v13/update_user           → 観測ログでベイズ更新
+  ③ → ④ → ③ → ④ を繰り返す
+```
+
+---
+
+## v1.3-① GET /v13/pair_compare/init
+
+10 ペア(色5 + 世界観5)を取得。初回診断で UI に表示する。
+
+```bash
+curl https://tamable-fibrous-lipstick-api.hf.space/v13/pair_compare/init | jq
+```
+
+レスポンス例(抜粋):
+```json
+{
+  "pairs": [
+    {
+      "pair_id": "color_01_bright_vs_deep",
+      "pair_type": "color",
+      "left": {
+        "product_id": "rmd_glasting_water_05",
+        "name": "ローズ スプラッシュ",
+        "image_url": "https://cloudflare.lipscosme.com/image/...",
+        "lab": {"L": 38.7, "a": 38.4, "b": 10.1},
+        "x20": [0.86, 0.79, 0.50, ...]
+      },
+      "right": { "product_id": "rmd_blur_fudge_03", ... }
+    }
+  ]
+}
+```
+
+---
+
+## v1.3-② POST /v13/pair_compare/apply
+
+10 ペアの選択結果から 4 θ の事前分布を構築する。
+
+```bash
+curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/pair_compare/apply \
+  -H "Content-Type: application/json" \
+  -d '{
+    "choices": [
+      {"pair_id": "color_01_bright_vs_deep", "chose": "left"},
+      {"pair_id": "color_02_warm_vs_cool",   "chose": "right"},
+      {"pair_id": "color_03_vivid_vs_nude",  "chose": "left"},
+      {"pair_id": "color_04_pink_vs_coral",  "chose": "left"},
+      {"pair_id": "color_05_rose_vs_red",    "chose": "left"},
+      {"pair_id": "wv_06_girly_vs_mature",   "chose": "left"},
+      {"pair_id": "wv_07_korean_vs_konare",  "chose": "left"},
+      {"pair_id": "wv_08_juicy_vs_matte",    "chose": "left"},
+      {"pair_id": "wv_09_sweet_vs_classy",   "chose": "left"},
+      {"pair_id": "wv_10_daily_vs_statement","chose": "left"}
+    ],
+    "pc_season": "ブルベ夏",
+    "warmness": -8.0
+  }' | jq
+```
+
+レスポンス:
+```json
+{
+  "theta_color":     { "mu": {"L":49.8,"a":46.0,"b":24.3},
+                       "var":{"L":0.16,"a":0.16,"b":0.16} },
+  "theta_pref":      { "mu": [0.0, 0.8, ..., -0.86],
+                       "var": [1.0, 0.96, ..., 1.0] },
+  "theta_explore":   { "mu": 0.5, "var": 0.25 },
+  "theta_thickness": { "mu": 0.5, "var": 0.10 },
+  "n_color_obs": 5,
+  "n_worldview_obs": 5
+}
+```
+
+→ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して UserState を組む。
+
+---
+
+## v1.3-③ POST /v13/recommend
+
+UserState 1つで TOP-N。`km_table` は API 内部で生成するので caller は持つ必要なし。
+
+```bash
+curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/recommend \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": {
+      "user_id": "mina_001",
+      "lip_lab": {"L":62, "a":22, "b":12},
+      "pc_season": "ブルベ夏",
+      "theta_color": {
+        "mu":  {"L":49.8, "a":46.0, "b":24.3},
+        "var": {"L":0.16, "a":0.16, "b":0.16}
+      },
+      "theta_pref": {
+        "mu":  [0.0, 0.8, 0.0, 0.0, -0.86, 0.0, 0.0, 0.0, -0.86, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.66, 0.05, 0.10, 0.20, 0.0],
+        "var": [1.0, 0.96, 1.0, 1.0, 0.96, 1.0, 1.0, 1.0, 0.96, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 0.95, 1.0, 1.0, 1.0, 1.0]
+      },
+      "theta_explore":   {"mu": 0.5, "var": 0.25},
+      "theta_thickness": {"mu": 0.5, "var": 0.10}
+    },
+    "top_n": 5
+  }' | jq
+```
+
+レスポンス(抜粋):
+```json
+{
+  "user_id": "mina_001",
+  "mu_thickness": 0.5,
+  "beta_used": 2.5,
+  "results": [
+    {
+      "product_id": "rmd_glasting_water_01",
+      "name": "コーラル ミスト",
+      "line_category": "gloss",
+      "image_url": "https://cloudflare.lipscosme.com/image/...",
+      "effective_lab": {"L": 48.1, "a": 45.8, "b": 25.0},
+      "delta_e_to_color": 1.71,
+      "pref_match": 0.0,
+      "f_score": -5.13,
+      "familiarity": 1.10,
+      "r_final": -7.89,
+      "catalog_pc_tags": ["イエベ秋", "ブルベ夏"]
+    }
+  ]
+}
+```
+
+★ `results[*].effective_lab` を AR で唇に合成して表示。
+
+### オプション
+- `top_n`: 1〜50(既定 5)
+- `line_category`: tint / gloss / matte / velvet / other で絞り込み
+- `alpha`: 色差感度(既定 3.0)
+- `beta_max`: セレンディピティ最大係数(既定 5.0)
+- `familiarity_weights`: [w1, w2, w3](既定 [4, 3, 2])
+
+---
+
+## v1.3-④ POST /v13/update_user
+
+AR の「いいね/微妙」観測でベイズ更新。返り値の UserState で caller の保存を上書き。
+
+```bash
+curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/update_user \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": { /* 現在の UserState */ },
+    "observations": [{
+      "source": "ar_view_like",
+      "product_id": "rmd_blur_fudge_03",
+      "observed_lab": {"L": 46.4, "a": 42.4, "b": 21.3},
+      "thickness": 0.27,
+      "y": 1.0,
+      "viewed_seconds": 8.5
+    }]
+  }' | jq
+```
+
+### Observation の source(設計書 §7.1)
+| source | σ²_obs | 主に動く θ |
+|---|---|---|
+| `pair_color` | 0.8 | θ_color + θ_pref |
+| `pair_worldview` | 0.8 | θ_pref |
+| `dialog` | 1.5 | θ_pref |
+| `behavior` | 1.0 | θ_color + θ_pref |
+| `ar_view_like` | 1.0 | 全 θ(thickness 含む) |
+| `ar_view_dislike` | 1.0 | θ_color(y=-1), θ_explore |
+
+### Observation のフィールド
+- `source`: 上表のいずれか(必須)
+- `product_id`: 観測対象商品(任意)
+- `observed_lab`: θ_color 更新用。AR なら effective_lab をそのまま入れる
+- `observed_x20`: θ_pref 更新用。ペア/対話で使う
+- `thickness`: θ_thickness 更新用(AR like のみ)。0.0〜1.0
+- `is_serendipity`: セレンディピティ提示への反応(θ_explore 更新トリガ)
+- `y`: like=+1, dislike=-1
+- `viewed_seconds`: 滞在時間(Phase 2 拡張で観測重み付けに利用)
+
+レスポンス:
+```json
+{
+  "user": { /* 更新後の UserState 丸ごと */ },
+  "n_applied": {
+    "theta_color": 1, "theta_pref": 0,
+    "theta_thickness": 1, "theta_explore": 0
+  }
+}
+```
+
+---
+
+## v1.3 トラブルシューティング
+
+| 症状 | 原因 / 対処 |
+|---|---|
+| 422 で `theta_pref` 蹴られる | `mu` と `var` は **20要素必須** |
+| 422 で `theta_color.var` 蹴られる | `var` のすべての成分は **>0**(0 不可) |
+| 422 で `observations` 空 | 観測リストは1件以上必須(最大100件) |
+| `theta_thickness` が動かない | source が `ar_view_like` で、`thickness` フィールドがあるか確認 |
+| TOP-1 が直感とズレる | x_20 軸が荒い(Kawanoさんと詰める前提) |
+| `image_url` が null | products.csv にURL未登録の商品。CATALOG_BY_ID で確認 |
+
+---
+
 最後にもう一度: **<https://tamable-fibrous-lipstick-api.hf.space/docs>** が一番手軽。
 ブラウザで開いて各エンドポイントの「Try it out」を押せば、上の curl 例を入れる手間なく試せる。

@@ -198,6 +198,9 @@ class KMTableRow(BaseModel):
     pc_tags: List[str] = Field(default_factory=list, description="答え合わせ用")
     name: str = ""
     line_category: str = ""
+    image_url: Optional[str] = Field(
+        None, description="商品スウォッチ画像 URL(Kawanoさん AR の表示用)"
+    )
 
 
 class RecommendV2Request(BaseModel):
@@ -236,6 +239,9 @@ class RecommendV2Item(BaseModel):
     familiarity: float = Field(..., description="familiarity(c, user)(Part VI)")
     r_final: float = Field(..., description="f - β(μ_explore)·familiarity(Part VI)")
     catalog_pc_tags: List[str] = Field(default_factory=list)
+    image_url: Optional[str] = Field(
+        None, description="商品スウォッチ画像 URL(Kawanoさん AR の表示用)"
+    )
 
 
 class RecommendV2Response(BaseModel):

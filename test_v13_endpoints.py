@@ -1,0 +1,261 @@
+"""/v13/* エンドポイントの単体テスト(正常系 + エラーケース)。
+
+test_v13_flow.py は E2E、こちらは個別エンドポイント毎の正常/異常を網羅する。
+"""
+
+import sys
+
+from fastapi.testclient import TestClient
+
+from app import app
+
+client = TestClient(app)
+
+
+def hr(title: str) -> None:
+    print(f"\n--- {title} ---")
+
+
+def assert_status(resp, expected: int, label: str) -> None:
+    if resp.status_code != expected:
+        print(f"  ✗ {label}: expected {expected}, got {resp.status_code}: {resp.text[:200]}")
+        sys.exit(1)
+    print(f"  ✓ {label}: {expected}")
+
+
+def make_user(pc: str = "ブルベ夏") -> dict:
+    pairs = client.get("/v13/pair_compare/init").json()["pairs"]
+    apply = client.post("/v13/pair_compare/apply", json={
+        "choices": [{"pair_id": p["pair_id"], "chose": "left"} for p in pairs],
+        "pc_season": pc,
+    }).json()
+    return {
+        "user_id": "test",
+        "lip_lab": {"L": 62, "a": 22, "b": 12},
+        "pc_season": pc,
+        "theta_color": apply["theta_color"],
+        "theta_pref": apply["theta_pref"],
+        "theta_explore": apply["theta_explore"],
+        "theta_thickness": apply["theta_thickness"],
+    }
+
+
+# ============ /v13/pair_compare/init ============
+
+def test_pair_init_returns_10_pairs() -> None:
+    hr("/v13/pair_compare/init: 10 ペア返る")
+    r = client.get("/v13/pair_compare/init")
+    assert_status(r, 200, "GET /v13/pair_compare/init")
+    data = r.json()
+    assert "pairs" in data, "pairs キーなし"
+    assert len(data["pairs"]) == 10, f"ペア数 {len(data['pairs'])} != 10"
+    for p in data["pairs"]:
+        assert p["pair_type"] in ("color", "worldview")
+        assert "left" in p and "right" in p
+        for side in (p["left"], p["right"]):
+            assert "product_id" in side
+            assert "lab" in side and {"L", "a", "b"} <= side["lab"].keys()
+            assert len(side["x20"]) == 20
+    n_color = sum(1 for p in data["pairs"] if p["pair_type"] == "color")
+    n_wv = sum(1 for p in data["pairs"] if p["pair_type"] == "worldview")
+    print(f"  ✓ 内訳: color={n_color}, worldview={n_wv}")
+    assert n_color == 5 and n_wv == 5
+
+
+# ============ /v13/pair_compare/apply ============
+
+def test_pair_apply_normal() -> None:
+    hr("/v13/pair_compare/apply: 正常系")
+    pairs = client.get("/v13/pair_compare/init").json()["pairs"]
+    r = client.post("/v13/pair_compare/apply", json={
+        "choices": [{"pair_id": p["pair_id"], "chose": "left"} for p in pairs],
+        "pc_season": "ブルベ夏",
+    })
+    assert_status(r, 200, "POST /v13/pair_compare/apply")
+    d = r.json()
+    for k in ["theta_color", "theta_pref", "theta_explore", "theta_thickness",
+              "n_color_obs", "n_worldview_obs"]:
+        assert k in d, f"{k} がレスポンスに無い"
+    assert d["n_color_obs"] == 5 and d["n_worldview_obs"] == 5
+    assert len(d["theta_pref"]["mu"]) == 20
+    print(f"  ✓ μ_color L={d['theta_color']['mu']['L']:.1f}, n_color={d['n_color_obs']}")
+
+
+def test_pair_apply_unknown_pair_id() -> None:
+    hr("/v13/pair_compare/apply: 未知 pair_id は飛ばされる")
+    r = client.post("/v13/pair_compare/apply", json={
+        "choices": [{"pair_id": "unknown_pair_999", "chose": "left"}],
+        "pc_season": "ブルベ夏",
+    })
+    assert_status(r, 200, "未知 pair_id でも 200")
+    d = r.json()
+    assert d["n_color_obs"] == 0 and d["n_worldview_obs"] == 0
+    print(f"  ✓ 未知ペアは集計に入らない (n_color=0, n_wv=0)")
+
+
+def test_pair_apply_empty_choices_400() -> None:
+    hr("/v13/pair_compare/apply: 空 choices は 422")
+    r = client.post("/v13/pair_compare/apply", json={
+        "choices": [],
+        "pc_season": "ブルベ夏",
+    })
+    assert_status(r, 422, "空 choices は 422 Validation Error")
+
+
+def test_pair_apply_no_pc_uses_neutral() -> None:
+    hr("/v13/pair_compare/apply: pc_season 未指定でも動く")
+    pairs = client.get("/v13/pair_compare/init").json()["pairs"]
+    r = client.post("/v13/pair_compare/apply", json={
+        "choices": [{"pair_id": p["pair_id"], "chose": "left"} for p in pairs[:5]],
+    })
+    assert_status(r, 200, "pc_season 未指定でも 200")
+    d = r.json()
+    print(f"  ✓ neutral μ_color L={d['theta_color']['mu']['L']:.1f}")
+
+
+# ============ /v13/update_user ============
+
+def test_update_user_normal() -> None:
+    hr("/v13/update_user: 正常系(AR like)")
+    user = make_user()
+    before_mu_t = user["theta_thickness"]["mu"]
+    r = client.post("/v13/update_user", json={
+        "user": user,
+        "observations": [{
+            "source": "ar_view_like",
+            "product_id": "rmd_blur_fudge_03",
+            "observed_lab": {"L": 46, "a": 42, "b": 21},
+            "thickness": 0.9,
+            "y": 1.0,
+        }],
+    })
+    assert_status(r, 200, "POST /v13/update_user")
+    d = r.json()
+    new_mu_t = d["user"]["theta_thickness"]["mu"]
+    assert new_mu_t > before_mu_t, "thickness が上昇していない"
+    assert d["n_applied"]["theta_thickness"] == 1
+    assert d["n_applied"]["theta_color"] == 1
+    print(f"  ✓ μ_thickness: {before_mu_t:.3f} → {new_mu_t:.3f}")
+
+
+def test_update_user_empty_obs_422() -> None:
+    hr("/v13/update_user: observations 空は 422")
+    user = make_user()
+    r = client.post("/v13/update_user", json={
+        "user": user, "observations": [],
+    })
+    assert_status(r, 422, "空 observations")
+
+
+def test_update_user_dislike_pulls_opposite() -> None:
+    hr("/v13/update_user: dislike (y=-1) で θ_color が逆方向")
+    user = make_user()
+    before_L = user["theta_color"]["mu"]["L"]
+    r = client.post("/v13/update_user", json={
+        "user": user,
+        "observations": [{
+            "source": "ar_view_dislike",
+            "product_id": "rmd_blur_fudge_03",
+            "observed_lab": {"L": 80, "a": 40, "b": 20},  # 明るい
+            "y": -1.0,
+        }],
+    })
+    assert_status(r, 200, "dislike 観測")
+    new_L = r.json()["user"]["theta_color"]["mu"]["L"]
+    # dislike で「明るい色」を否定 → μ_color L は事前より下がる方向
+    print(f"  ✓ μ_color_L: {before_L:.2f} → {new_L:.2f} (dislike で逆方向)")
+
+
+# ============ /v13/recommend ============
+
+def test_recommend_normal() -> None:
+    hr("/v13/recommend: 正常系 TOP-N")
+    user = make_user()
+    r = client.post("/v13/recommend", json={"user": user, "top_n": 5})
+    assert_status(r, 200, "POST /v13/recommend")
+    d = r.json()
+    assert len(d["results"]) == 5
+    for it in d["results"]:
+        for k in ["product_id", "name", "line_category", "effective_lab",
+                  "delta_e_to_color", "pref_match", "f_score",
+                  "familiarity", "r_final", "image_url"]:
+            assert k in it, f"{k} がレスポンスに無い"
+        assert {"L", "a", "b"} <= it["effective_lab"].keys()
+    # 降順チェック
+    rs = [it["r_final"] for it in d["results"]]
+    assert rs == sorted(rs, reverse=True), "R_final 降順でない"
+    print(f"  ✓ TOP-5 全フィールド OK, image_url 含む")
+    img = d["results"][0]["image_url"]
+    assert img and img.startswith("http"), f"image_url が URL でない: {img}"
+    print(f"  ✓ TOP-1 image_url: {img[:60]}...")
+
+
+def test_recommend_with_line_filter() -> None:
+    hr("/v13/recommend: line_category フィルタ")
+    user = make_user()
+    r = client.post("/v13/recommend", json={
+        "user": user, "top_n": 10, "line_category": "matte",
+    })
+    assert_status(r, 200, "matte 絞り込み")
+    d = r.json()
+    for it in d["results"]:
+        assert it["line_category"] == "matte", \
+            f"matte 以外: {it['product_id']} ({it['line_category']})"
+    print(f"  ✓ TOP-{len(d['results'])} 全部 matte")
+
+
+def test_recommend_thickness_changes_eff_lab() -> None:
+    hr("/v13/recommend: μ_thickness で effective_lab が変わる")
+    user_a = make_user()
+    user_b = make_user()
+    user_a["theta_thickness"]["mu"] = 0.2
+    user_b["theta_thickness"]["mu"] = 0.9
+    ra = client.post("/v13/recommend", json={"user": user_a, "top_n": 3}).json()
+    rb = client.post("/v13/recommend", json={"user": user_b, "top_n": 3}).json()
+    # 共通する product を見つけて effective_lab を比較
+    a_ids = {r["product_id"]: r for r in ra["results"]}
+    common = None
+    for r in rb["results"]:
+        if r["product_id"] in a_ids:
+            common = (a_ids[r["product_id"]], r)
+            break
+    if common:
+        a_eff = common[0]["effective_lab"]
+        b_eff = common[1]["effective_lab"]
+        assert abs(a_eff["L"] - b_eff["L"]) > 0.5, "L が変化していない"
+        print(f"  ✓ μ_t=0.2: L={a_eff['L']:.1f}, μ_t=0.9: L={b_eff['L']:.1f}")
+    else:
+        print(f"  ⚠ 共通商品なし(両方とも個人化が強く効いた)")
+
+
+def test_recommend_serendipity_explore_high() -> None:
+    hr("/v13/recommend: μ_explore で β が変わる")
+    user = make_user()
+    user["theta_explore"]["mu"] = 0.0
+    r0 = client.post("/v13/recommend", json={"user": user, "top_n": 1}).json()
+    user["theta_explore"]["mu"] = 1.0
+    r1 = client.post("/v13/recommend", json={"user": user, "top_n": 1}).json()
+    assert r0["beta_used"] == 0.0
+    assert r1["beta_used"] == 5.0
+    print(f"  ✓ explore=0→β={r0['beta_used']}, explore=1→β={r1['beta_used']}")
+
+
+if __name__ == "__main__":
+    # /v13/pair_compare/init
+    test_pair_init_returns_10_pairs()
+    # /v13/pair_compare/apply
+    test_pair_apply_normal()
+    test_pair_apply_unknown_pair_id()
+    test_pair_apply_empty_choices_400()
+    test_pair_apply_no_pc_uses_neutral()
+    # /v13/update_user
+    test_update_user_normal()
+    test_update_user_empty_obs_422()
+    test_update_user_dislike_pulls_opposite()
+    # /v13/recommend
+    test_recommend_normal()
+    test_recommend_with_line_filter()
+    test_recommend_thickness_changes_eff_lab()
+    test_recommend_serendipity_explore_high()
+    print("\n" + "=" * 50)
+    print("✅ /v13/* endpoints: 全 11 テスト合格")

@@ -98,6 +98,8 @@ def _load_catalog() -> List[Dict]:
                 "pc_tags": _parse_pc_tags(row.get("pc_season", "")),
                 # v1.3: 20次元 pref ベクトル(機能15 + 世界観5)
                 "x20": load_x20_from_row(row),
+                # v1.3: AR 表示用の画像 URL
+                "image_url": row.get("image_url") or None,
             })
     return items
 
@@ -670,6 +672,7 @@ def _km_table_for_user(
             pc_tags=list(p.get("pc_tags", [])),
             name=p.get("name", ""),
             line_category=p.get("line_category", ""),
+            image_url=p.get("image_url"),
         ))
     return rows
 

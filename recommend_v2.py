@@ -155,6 +155,7 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
             familiarity=fam,
             r_final=r_final,
             catalog_pc_tags=row.pc_tags,
+            image_url=row.image_url,
         ))
 
     items.sort(key=lambda it: it.r_final, reverse=True)

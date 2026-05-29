@@ -18,11 +18,19 @@ import json
 import time
 from typing import Any, Dict, List
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app import app
+from ui_app import (
+    TEXTURE_BY_CATEGORY,
+    composite_lip,
+    extract_lip_mask,
+    measure_lip_lab,
+)
 
 st.set_page_config(
     page_title="Fibrous Lipstick — v1.3 ベイズループ可視化",
@@ -135,6 +143,9 @@ DEFAULTS = {
     "last_update_detail": None,  # 数式 LiveView 用
     "lip_lab": {"L": 62.0, "a": 22.0, "b": 12.0},
     "pc_season": "ブルベ夏",
+    # 実写合成用
+    "lip_image_rgb": None,     # np.ndarray (H, W, 3) uint8
+    "lip_image_alpha": None,   # np.ndarray (H, W) float
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -167,6 +178,53 @@ with st.sidebar:
             if k != "_client":
                 del st.session_state[k]
         st.rerun()
+
+    st.divider()
+    # ---- 唇画像アップロード(任意。AR 試着で実写合成が見える) ----
+    st.subheader("👄 唇画像(任意)")
+    uploaded = st.file_uploader(
+        "顔写真をアップロード", type=["png", "jpg", "jpeg", "webp"],
+        help="アップロードすると AR 試着タブで実写合成が見える。"
+             "唇 Lab も自動計測してサイドバーに反映",
+    )
+    if uploaded is not None:
+        img = Image.open(uploaded).convert("RGB")
+        # 高解像度はリサイズ(処理速度のため)
+        max_side = 600
+        if max(img.size) > max_side:
+            ratio = max_side / max(img.size)
+            img = img.resize((int(img.size[0] * ratio), int(img.size[1] * ratio)))
+        rgb = np.asarray(img)
+        alpha = extract_lip_mask(rgb)
+        st.session_state.lip_image_rgb = rgb
+        st.session_state.lip_image_alpha = alpha
+        # 自動計測した Lab を反映
+        measured = measure_lip_lab(rgb, alpha)
+        if measured is not None:
+            st.session_state.lip_lab = {
+                "L": float(measured[0]),
+                "a": float(measured[1]),
+                "b": float(measured[2]),
+            }
+            st.success(
+                f"唇 Lab を計測: L={measured[0]:.1f} "
+                f"a={measured[1]:.1f} b={measured[2]:.1f}"
+            )
+        # 画像 + マスクのプレビュー
+        st.image(rgb, caption="アップロード画像", use_container_width=True)
+        # 唇 mask の輪郭が見えるオーバーレイ
+        overlay = rgb.copy()
+        mask_bool = alpha > 0.5
+        overlay[mask_bool] = (
+            overlay[mask_bool] * 0.6 + np.array([60, 255, 60]) * 0.4
+        ).astype(np.uint8)
+        st.image(overlay, caption="唇マスク(緑)", use_container_width=True)
+    elif st.session_state.lip_image_rgb is not None:
+        if st.button("📷 唇画像をクリア"):
+            st.session_state.lip_image_rgb = None
+            st.session_state.lip_image_alpha = None
+            st.rerun()
+        st.caption("唇画像セット済み(クリアでリセット)")
 
     st.divider()
 
@@ -325,19 +383,43 @@ with tab_ar:
                 f"**μ_thickness = {rec['mu_thickness']:.3f}**  "
                 f"β = {rec['beta_used']:.2f}"
             )
+            has_lip_image = (
+                st.session_state.lip_image_rgb is not None
+                and st.session_state.lip_image_alpha is not None
+            )
             for i, item in enumerate(rec["results"]):
                 with st.container(border=True):
                     cols = st.columns([2, 3, 2])
                     eff = item["effective_lab"]
-                    # 色チップ
-                    hex_color = _lab_to_hex_approx(eff)
-                    cols[0].markdown(
-                        f"<div style='background:{hex_color};height:60px;"
-                        f"border-radius:8px;border:1px solid #888'></div>",
-                        unsafe_allow_html=True,
-                    )
+                    pid = item["product_id"]
+
+                    if has_lip_image:
+                        # ★ 実写合成: 唇画像に effective_lab を塗る
+                        ts = TEXTURE_BY_CATEGORY.get(
+                            item.get("line_category", "other"), 1.0
+                        )
+                        comp = composite_lip(
+                            st.session_state.lip_image_rgb,
+                            st.session_state.lip_image_alpha,
+                            (eff["L"], eff["a"], eff["b"]),
+                            texture_strength=ts,
+                        )
+                        cols[0].image(comp, use_container_width=True)
+                    else:
+                        # 色チップ(フォールバック)
+                        hex_color = _lab_to_hex_approx(eff)
+                        cols[0].markdown(
+                            f"<div style='background:{hex_color};height:80px;"
+                            f"border-radius:8px;border:1px solid #888'></div>",
+                            unsafe_allow_html=True,
+                        )
+
                     cols[0].markdown(f"**#{i+1}** {item['name']}")
-                    cols[0].caption(f"{item['product_id']} · {item['line_category']}")
+                    cols[0].caption(f"{pid} · {item['line_category']}")
+                    # 商品画像(small)
+                    if item.get("image_url"):
+                        cols[0].image(item["image_url"], width=120)
+
                     cols[1].markdown(
                         f"**effective_Lab** = ({eff['L']:.1f}, {eff['a']:.1f}, {eff['b']:.1f})"
                     )
@@ -346,7 +428,6 @@ with tab_ar:
                         f"ΔE={item['delta_e_to_color']:.2f}  "
                         f"familiarity={item['familiarity']:.2f}"
                     )
-                    pid = item["product_id"]
                     thickness = cols[2].slider(
                         "塗り厚 t",
                         0.0, 1.0,
