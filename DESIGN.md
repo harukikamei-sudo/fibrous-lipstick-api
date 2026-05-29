@@ -300,7 +300,7 @@ gloss=1.5 / tint=1.0 / velvet=0.9 / matte=0.75 / other=1.0。
 `load_lip_image(preset)` 優先順位: `lip_<preset>.png`(個別) > `model.png`(共用) >
 ダミー(楕円描画フォールバック)。**塗布色は a,b を上書きするので、写真の元の唇色は
 無関係**(写真は形/質感/陰影を担当) ⇒ 実写 1 枚で全プリセット/全商品に使える。
-将来 Kawano さんデータは `load_lip_image` の内部だけ差し替え(インターフェース固定)。
+将来 Kawanoさんデータは `load_lip_image` の内部だけ差し替え(インターフェース固定)。
 
 ### 6.4 素材と権利
 `model.png` = Wikimedia Commons **"Mouth.jpg"(Public Domain)**。素の唇(化粧無し)を選定し、
@@ -405,7 +405,7 @@ interpretation: ≥0.7 good / ≥0.5 acceptable / <0.5 poor
 - イエベ秋系で 5-6 件のスキップが発生(=カタログ秋タグの未付与集中区域が可視化)
 
 ### 役割分担
-- **Kawano**: 写真 → 唇 Lab + PC 判定(撮影/分類担当)
+- **Kawanoさん**: 写真 → 唇 Lab + PC 判定(撮影/分類担当)
 - **Haruki**: 唇 Lab + PC を入力に、論文ベース推奨ロジックを構築(本実装)
 - カタログ `pc_season` タグはあくまで「答え合わせ用」
 

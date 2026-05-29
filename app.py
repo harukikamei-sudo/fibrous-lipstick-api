@@ -429,7 +429,7 @@ def root():
             "/compute_km_table",
             "/recommend",
             "/evaluate",
-            # v1.3 (Kawano interface 提案・仮)
+            # v1.3 (Kawanoさん interface 提案・仮)
             "/v13/pair_compare/init",
             "/v13/pair_compare/apply",
             "/v13/update_user",
@@ -635,10 +635,10 @@ def recommend_endpoint(req: RecommendRequest):
 
 # ============ 設計書 v1.3 エンドポイント群 ============
 # 設計方針:
-#   - すべてステートレス。caller(Kawano AR / GAS / 他バックエンド)が
+#   - すべてステートレス。caller(Kawanoさん AR / GAS / 他バックエンド)が
 #     UserState を保持し、リクエスト毎に丸ごと渡す。
 #   - 永続化先(GAS/Spreadsheet/Firebase/SQLite 等)は caller の自由。
-#   - データ形式は議論段階。Kawano と相談して固める想定。
+#   - データ形式は議論段階。Kawanoさん と相談して固める想定。
 
 def _km_table_for_user(
     lip: List[float],
@@ -678,7 +678,7 @@ def _km_table_for_user(
 def v13_pair_compare_init():
     """Part II 強制ペア比較の 10 ペアを返す。
 
-    caller(Kawano)はユーザーに各ペアの left/right を提示し、選択を集めて
+    caller(Kawanoさん)はユーザーに各ペアの left/right を提示し、選択を集めて
     `/v13/pair_compare/apply` に送る。ペアの中身は MVP では仮データ。
     """
     return pc_mod.get_pair_bank()

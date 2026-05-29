@@ -36,7 +36,7 @@
 **何が見えないか:**
 - AR の見た目(色の合成は Streamlit `ui_v13.py` の方で確認)
 - 商品画像(CLI なので)
-- 実際の Kawano AR 側の動き(これから作る部分)
+- 実際の Kawanoさん AR 側の動き(これから作る部分)
 
 ---
 
@@ -416,12 +416,12 @@ $$R(t) = \frac{1 - R_{lip}(a - b \coth(bSt))}{(a - R_{lip}) + b \coth(bSt)}$$
 ### 10.1 TOP-1 精度に「ニアミス」がある
 アヤ(薄めヌード派)の TOP-1 が matte 系商品になるなど、ペルソナ志向と完全一致しないケースがある。
 
-**原因:** x_20 軸が荒い派生計算で、Kawano UI と未合意。
+**原因:** x_20 軸が荒い派生計算で、Kawanoさん UI と未合意。
 
-**対策:** Kawano と x_20 軸を詰める(KAWANO_INTERFACE.md §5 第4項)。
+**対策:** Kawanoさん と x_20 軸を詰める(KAWANO_INTERFACE.md §5 第4項)。
 
 ### 10.2 ペア定義が仮データ
-`_PAIR_SPECS`(`pair_compare.py:158`)は俺が組んだだけ。Kawano UI のフロー次第で差し替え必要。
+`_PAIR_SPECS`(`pair_compare.py:158`)は俺が組んだだけ。Kawanoさん UI のフロー次第で差し替え必要。
 
 ### 10.3 設計書 §7.5 の収束表との数値乖離
 設計書本文の表(N=1→σ²=0.094)は σ²_obs を別値で計算した近似値で、数式 `σ²_N = 1/(1/σ²_0 + N/σ²_obs)` から計算される値(N=1→σ²=0.0333)とは異なる。実装は数式を採用。
@@ -466,5 +466,5 @@ $$R(t) = \frac{1 - R_{lip}(a - b \coth(bSt))}{(a - R_{lip}) + b \coth(bSt)}$$
 - [CLAUDE.md](CLAUDE.md) — プロジェクト概要
 - [DESIGN.md](DESIGN.md) — 元の設計理論
 - [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) — API spec(技術詳細)
-- [KAWANO_HANDOFF.md](KAWANO_HANDOFF.md) — Kawano と相談用(役割分担)
+- [KAWANO_HANDOFF.md](KAWANO_HANDOFF.md) — Kawanoさん と相談用(役割分担)
 - [LOG.md](LOG.md) — 開発ログ(エポック10 が v1.3 個人化層)

@@ -1,22 +1,22 @@
-# KAWANO_INTERFACE.md — ハルキ側 API の叩き方(提案・暫定)
+# KAWANO_INTERFACE.md — lip API 側 API の叩き方(提案・暫定)
 
 > **このドキュメントは「決定事項」ではなく「叩き台」です。**
-> Kawano 側の事情(SDK・状態保持・通信モデル)に合わせて、ペイロード形式・
+> Kawanoさん 側の事情(SDK・状態保持・通信モデル)に合わせて、ペイロード形式・
 > 通信方式・状態の置き場所はすべて差し替え可能。気になる点は遠慮なく言ってください。
 >
 > 最終更新: 2026-05-29 / 設計書 v1.3 準拠 / Opus 4.7 実装
 
 ---
 
-## 0. ハルキ API の役割(ステートレス計算サーバー)
+## 0. lip API の役割(ステートレス計算サーバー)
 
 | 責務 | 担当 |
 |---|---|
-| 唇 Lab 取得 / PC 判定 / AR 表示 / 質感合成 | **Kawano** |
-| K-M 物理計算 / ベイズ更新 / 推奨スコア計算 | **ハルキ(この API)** |
-| ユーザー状態(`UserState`)の永続化 | **Kawano が選ぶ**(GAS+Spreadsheet / Firebase / 自前 BE / 何でも可) |
+| 唇 Lab 取得 / PC 判定 / AR 表示 / 質感合成 | **Kawanoさん** |
+| K-M 物理計算 / ベイズ更新 / 推奨スコア計算 | **lip API(この API)** |
+| ユーザー状態(`UserState`)の永続化 | **Kawanoさん が選ぶ**(GAS+Spreadsheet / Firebase / 自前 BE / 何でも可) |
 
-ハルキ API は **state を持ちません**。リクエスト毎に caller(Kawano か中継 BE)が
+lip API は **state を持ちません**。リクエスト毎に caller(Kawanoさん か中継 BE)が
 `UserState` を丸ごと送る → 計算結果と更新後 state を返す → caller が保存する、
 という素直な流れにしてあります。
 
@@ -26,8 +26,8 @@
 
 ```
 [初回診断]
-1. Kawano が唇撮影 → 唇 Lab を抽出
-2. Kawano が肌撮影 → PC 判定(イエベ春/秋/ブルベ夏/冬)
+1. Kawanoさん が唇撮影 → 唇 Lab を抽出
+2. Kawanoさん が肌撮影 → PC 判定(イエベ春/秋/ブルベ夏/冬)
 3. GET  /v13/pair_compare/init       → 10 ペア取得
 4. ユーザーが 10 ペアを選択(強制 2 択)
 5. POST /v13/pair_compare/apply      → 4 つの事前分布
@@ -35,7 +35,7 @@
 
 [AR 試着ループ]
 7. POST /v13/recommend               → TOP-N(上位3〜5件を AR で見せる)
-8. Kawano が AR スライダー UI を提供(0.0 〜 1.0 連続)
+8. Kawanoさん が AR スライダー UI を提供(0.0 〜 1.0 連続)
 9. ユーザーが「いいね/微妙」を押す
 10. POST /v13/update_user            → 観測適用 → 新 UserState
 11. caller が UserState を上書き保存
@@ -117,7 +117,7 @@ caller は **これを丸ごと自分のストレージに保存**して、リ�
 }
 ```
 
-**🤝 確認したいこと:** ペアの中身は俺が暫定で組んだだけ。Kawano 側で見せる
+**🤝 確認したいこと:** ペアの中身は俺が暫定で組んだだけ。Kawanoさん 側で見せる
 順番・本数・画像の出し方など合わせ込みたいので、希望あれば言ってください。
 
 ### 4.2 `POST /v13/pair_compare/apply`
@@ -244,19 +244,19 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
 
 ## 5. 議論したいポイント
 
-設計書 v1.3 を素直に実装しているが、Kawano 側との接続点で詰めたい:
+設計書 v1.3 を素直に実装しているが、Kawanoさん 側との接続点で詰めたい:
 
 1. **データの渡し方**
    - Lab を `{L,a,b}` dict にしているが、`[L,a,b]` 配列の方が楽なら変更可
    - `UserState` 丸ごと往復は重いか?(20次元 vec × 2 + Lab × 2 + スカラー × 4 ≈ 50 数値)
-   - caller 側が状態保持しない選択肢が欲しい場合は、ハルキ側で SQLite を持つ拡張も可
+   - caller 側が状態保持しない選択肢が欲しい場合は、lip API 側で SQLite を持つ拡張も可
 
 2. **通信モデル**
-   - 現状は同期 REST。Kawano が GAS なら同期で十分
-   - もし Kawano AR から直接叩く構成なら CORS は `*` 解放済み
+   - 現状は同期 REST。Kawanoさん が GAS なら同期で十分
+   - もし Kawanoさん AR から直接叩く構成なら CORS は `*` 解放済み
 
 3. **ペア比較 10 問の中身**
-   - 俺が仮で組んだだけ。商品の組み合わせ・提示順は Kawano 側の UX に合わせたい
+   - 俺が仮で組んだだけ。商品の組み合わせ・提示順は Kawanoさん 側の UX に合わせたい
    - `_PAIR_SPECS`(`pair_compare.py`)を差し替えるだけで反映できる
 
 4. **20 次元 pref ベクトル `x_20` の軸定義**
@@ -264,7 +264,7 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
      velvet_finish / moisture / durability / blur_effect / juicy_feel /
      cool_tone / warm_tone / light_color / deep_color / everyday_use /
      girly / konare / sweetness / korean / mature
-   - Kawano が AR で扱いたい「印象タグ」と整合を取りたい
+   - Kawanoさん が AR で扱いたい「印象タグ」と整合を取りたい
 
 5. **観測ログのスキーマ**
    - 今は `source` enum で分岐。`extras: {}` フィールドを追加して将来拡張できるようにも可
@@ -275,12 +275,12 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
    - 規模が増えたら caller 側でテーブルキャッシュ→`km_table` 引数で渡す方式に切り替え可
 
 7. **ユーザー識別 / 認証**
-   - 現状 `user_id` は caller が任意で発行する文字列。ハルキ側に DB なし
-   - Kawano 側でアカウント機構を持つか、ハルキ側に最小限の users テーブル要るかは要相談
+   - 現状 `user_id` は caller が任意で発行する文字列。lip API 側に DB なし
+   - Kawanoさん 側でアカウント機構を持つか、lip API 側に最小限の users テーブル要るかは要相談
 
 ---
 
-## 6. ハルキ側の実装ファイル(参考)
+## 6. lip API 側の実装ファイル(参考)
 
 | ファイル | 役割 |
 |---|---|

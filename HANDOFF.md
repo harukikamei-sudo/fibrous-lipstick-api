@@ -25,7 +25,7 @@ rom&nd 1ブランド145商品を対象に、唇の Lab + 商品 + 厚みから K
 |---|---|---|
 | ① | **HANDOFF.md (このファイル)** | 直近の状態・未解決事項・新セッション起点 |
 | ② | **[CLAUDE.md](CLAUDE.md)** | 運用・進捗・申し送り |
-| ③ | **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** | ★v1.3 個人化学習層の Kawano interface(議論ポイント付き) |
+| ③ | **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** | ★v1.3 個人化学習層の Kawanoさん interface(議論ポイント付き) |
 | ④ | **[DESIGN.md](DESIGN.md)** | 理論・式の導出・計算過程・なぜその値か |
 | ⑤ | **[LOG.md](LOG.md)** | 各意思決定の目的・試行・失敗・採用根拠(時系列) |
 | ⑥ | **[API_GUIDE.md](API_GUIDE.md)** | エンドポイント使い方(curl 例・レスポンス例) |
@@ -56,7 +56,7 @@ rom&nd 1ブランド145商品を対象に、唇の Lab + 商品 + 厚みから K
 | ├ effective_Lab 線形補間 + Part IV/VI 統合スコア | ✅ `recommend_v2.py` + test 7件 |
 | ├ 強制ペア比較 10問(色5 + 世界観5、仮データ) | ✅ `pair_compare.py` |
 | ├ 20次元 pref ベクトル(機能15 + 世界観5、派生計算) | ✅ `catalog_x20.py` + CSV 列付与済 |
-| ├ Kawano interface 4 エンドポイント | ✅ `/v13/pair_compare/init,apply` `/v13/update_user` `/v13/recommend` |
+| ├ Kawanoさん interface 4 エンドポイント | ✅ `/v13/pair_compare/init,apply` `/v13/update_user` `/v13/recommend` |
 | └ E2E 統合疎通テスト | ✅ `test_v13_flow.py`(μ_thickness 学習で TOP 順位変動を確認) |
 
 最新の git 状態:
@@ -99,7 +99,7 @@ fibrous-lipstick-api/
 | 2. 強制ペア比較が無い | ✅ `pair_compare.py` で 10 ペア仮データ + 事前分布構築 |
 | 3. 20次元 pref ベクトルが無い | ✅ `catalog_x20.py` で派生計算、CSV 付与済 |
 | 4. PC連携実装方針が違う | ⚠️ 既存ハード距離マッチングは維持(MVP の高精度実装、0.81 達成)。Bayesian 事前分布側の経路も新規実装で並走 |
-| 5. GAS vs Python | 🤝 ステートレス Python API として実装。永続化先(GAS/Firebase/他)は Kawano 次第 |
+| 5. GAS vs Python | 🤝 ステートレス Python API として実装。永続化先(GAS/Firebase/他)は Kawanoさん 次第 |
 
 詳細は `KAWANO_INTERFACE.md` 参照。以下、旧ドキュメント原文を残置:
 
@@ -112,12 +112,12 @@ v1.3 の正式構造は以下の 6 Part:
 
 ```
 Part I    PC診断              → θ_color 事前分布(経路A)
-Part I'   唇Lab取得 [新規]    → Kawano撮影
+Part I'   唇Lab取得 [新規]    → Kawanoさん撮影
 Part I''  K-Mバッチ生成 [新規]→ user_product_lab_table 146×21
 Part II   強制ペア比較(10問)  → 事前分布(経路B、ミナ向け中核)
 Part III  統合ベイズ更新      → 4パラメータ学習
 Part IV   推奨スコア統合式    → f = -α·ΔE2000(eff_Lab, μ_color) + μ_pref·c.x_20
-Part V    AR試着 [拡張]       → Kawano AR + スライダー + いいね/微妙
+Part V    AR試着 [拡張]       → Kawanoさん AR + スライダー + いいね/微妙
 Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiarity
 ```
 
@@ -128,8 +128,8 @@ Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiar
 - `θ_thickness` (1次元、塗り厚好み)
 
 **役割分担(設計書)**:
-- ハルキ: K-M計算・推奨計算 (**設計書では GAS で実装**)
-- Kawano: AR表示・質感合成・スライダーUI・いいね/微妙UI・観測ログ送信
+- lip API: K-M計算・推奨計算 (**設計書では GAS で実装**)
+- Kawanoさん: AR表示・質感合成・スライダーUI・いいね/微妙UI・観測ログ送信
 
 ### 現状実装との乖離 5 点
 
@@ -137,7 +137,7 @@ Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiar
 2. **強制ペア比較が無い** — ミナの事前分布構築の中核(経路B)が無い
 3. **20次元 pref ベクトルが無い** — `μ_pref·c.x_20` 項が推薦スコアから落ちてる
 4. **PC連携実装方針が違う** — 設計書は事前分布、実装はハード距離マッチング
-5. **GAS vs Python** — 設計書は GAS+Spreadsheet、実装は FastAPI+Python (Kawano 連携 interface 接続未確認)
+5. **GAS vs Python** — 設計書は GAS+Spreadsheet、実装は FastAPI+Python (Kawanoさん 連携 interface 接続未確認)
 
 ### Part 対応表
 
@@ -157,13 +157,13 @@ Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiar
 ## 6. **次セッション開始時の状態**
 
 ユーザー方針(2026-05-29 回答済):
-> 「唇Lab・AR・PC判定は Kawano がやるから、それを俺が受け取ってシミュできるようにして」
-> 「Kawano からはまだ何も来てない前提で、連携しやすいように作る」
+> 「唇Lab・AR・PC判定は Kawanoさん がやるから、それを俺が受け取ってシミュできるようにして」
+> 「Kawanoさん からはまだ何も来てない前提で、連携しやすいように作る」
 
-→ 設計書 v1.3 の役割分担に従い、**ハルキ API はステートレス計算サーバー**として実装完了。
-   Kawano からの interface 確定待ち(`KAWANO_INTERFACE.md` §5 に議論ポイント7項目)。
+→ 設計書 v1.3 の役割分担に従い、**lip API はステートレス計算サーバー**として実装完了。
+   Kawanoさん からの interface 確定待ち(`KAWANO_INTERFACE.md` §5 に議論ポイント7項目)。
 
-### 待ち状態(Kawano との合意事項)
+### 待ち状態(Kawanoさん との合意事項)
 
 | # | 議論ポイント | デフォルト実装 |
 |---|---|---|
@@ -173,11 +173,11 @@ Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiar
 | 4 | x_20 軸の20軸定義(機能15+世界観5) | 派生計算による暫定軸 |
 | 5 | 観測ログの拡張余地(`extras`, `viewed_seconds`) | `extras` 無し、`viewed_seconds` 任意 |
 | 6 | K-M テーブルの事前計算 vs 都度計算 | 都度計算(MVP は十分高速) |
-| 7 | 認証 / users 永続化(ハルキ側 or Kawano 側) | ハルキ側 DB なし(caller が保持) |
+| 7 | 認証 / users 永続化(lip API 側 or Kawanoさん 側) | lip API 側 DB なし(caller が保持) |
 
 ### 直近のオプション
 
-- **a. このまま Kawano に「叩き台 ready」と連絡** → 1〜7 を相談しながら詰める
+- **a. このまま Kawanoさん に「叩き台 ready」と連絡** → 1〜7 を相談しながら詰める
 - **b. ミナさん向けデモを Streamlit Lv2 のまま実施** → 個人化学習を組み込んだ UI に拡張
 - **c. 既存 `/recommend` (ハード距離マッチング、0.81 達成) を本番継続、`/v13/*` は実験ライン**
 - **d. Streamlit UI を v1.3 ベイズ更新ループに対応させる**(AR スライダー + いいね/微妙)

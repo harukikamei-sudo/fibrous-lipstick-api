@@ -9,7 +9,7 @@
   → 「口紅を塗った唇」っぽいビジュアルになる
 
 唇画像(プリセット 5 枚)は assets/lips/lip_<preset>.png(PNG, α で唇マスク)。
-無ければダミー唇シェイプを動的生成。将来 Kawano さんデータは load_lip_image() を
+無ければダミー唇シェイプを動的生成。将来 Kawanoさんデータは load_lip_image() を
 差し替えれば対応可能(インターフェース固定)。
 
 起動:
@@ -74,7 +74,7 @@ def chip(lab, label=""):
 # ============ 唇画像のロード(Format A: assets / フォールバック: ダミー) ============
 #
 # load_lip_image(preset_name) -> (rgb_uint8 HxWx3, mask HxW bool)
-# 将来 Kawano さんのデータ形式が固まったら、この関数の内部だけ差し替える。
+# 将来 Kawanoさんのデータ形式が固まったら、この関数の内部だけ差し替える。
 
 def _dummy_lip(preset_name, w=400, h=300):
     """assets が無い時のダミー唇。

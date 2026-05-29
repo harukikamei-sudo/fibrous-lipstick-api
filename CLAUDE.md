@@ -4,7 +4,7 @@
 > 即座に把握できるよう簡潔にまとめてある。
 >
 > **新セッションは [HANDOFF.md](HANDOFF.md) を最初に読む**(直近の状態+未解決事項を集約)。
-> **設計書 v1.3 の Kawano 接続点(=本実装の主役)は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)**。
+> **設計書 v1.3 の Kawanoさん 接続点(=本実装の主役)は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)**。
 > **理論・式の導出・計算過程・なぜその値か は [DESIGN.md](DESIGN.md)(ロジック設計書)** に集約。
 > **API の使い方(curl 例・レスポンス例)は [API_GUIDE.md](API_GUIDE.md)**。
 > **各意思決定の背景・失敗試行・採用根拠は [LOG.md](LOG.md)(開発ログ)** に時系列で残す。
@@ -84,7 +84,7 @@ fibrous-lipstick-api/
 ├── test_bayesian.py      ベイズ更新の性質テスト(8件)
 ├── test_recommend_v2.py  統合スコアのテスト(7件)
 ├── test_v13_flow.py      E2E 統合疎通(/v13/* 4 エンドポイント)
-└── KAWANO_INTERFACE.md ★Kawano 向け API spec(議論ポイント7項目)
+└── KAWANO_INTERFACE.md ★Kawanoさん 向け API spec(議論ポイント7項目)
 ```
 
 ## 重要な設計判断
@@ -210,7 +210,7 @@ products_with_lab.csv からロード。
   イエベ秋も平均 0.71 で good 帯に到達(0.46→0.58→0.71)。
 
 ### PC 連携の役割分担
-- Kawano: 写真 → 唇 Lab + PC 判定(写真ベースの判定担当)
+- Kawanoさん: 写真 → 唇 Lab + PC 判定(写真ベースの判定担当)
 - Haruki: 唇 Lab + PC を入力に、論文ベース推奨ロジックを構築(本実装)
 - カタログ pc_season タグはあくまで「答え合わせ用」
 
@@ -302,14 +302,14 @@ products_with_lab.csv からロード。
 | 4.6 | PC: 清濁(C*)軸 + 空タグバックフィル | ✅ 完了 (全平均 0.810、20/20 good or acceptable) |
 | UI-Lv2 | Streamlit ui_app.py(実写唇に塗布シミュ合成。α羽化ブレンドで顔保持) | ✅ 完了。実写モデル(CC BY 3.0)に色を重ねてリアル表示。色しきい値で唇マスク自動抽出 |
 | **v1.3-A** | **設計書 v1.3 個人化学習層: 4 θ ベイズ更新 + Part IV/VI 統合スコア** | ✅ 完了 (`bayesian.py` + `recommend_v2.py`) |
-| **v1.3-B** | **強制ペア比較(色5+世界観5、仮データ)+ 事前分布構築** | ✅ 完了 (`pair_compare.py`)。ペア中身は Kawano と要相談 |
-| **v1.3-C** | **20次元 pref ベクトル(機能15+世界観5)の派生計算+ CSV 付与** | ✅ 完了 (`catalog_x20.py`)。軸定義は Kawano と要相談 |
-| **v1.3-D** | **Kawano interface: `/v13/pair_compare/{init,apply}` `/v13/update_user` `/v13/recommend`** | ✅ 完了 (`app.py` + `KAWANO_INTERFACE.md`) |
+| **v1.3-B** | **強制ペア比較(色5+世界観5、仮データ)+ 事前分布構築** | ✅ 完了 (`pair_compare.py`)。ペア中身は Kawanoさん と要相談 |
+| **v1.3-C** | **20次元 pref ベクトル(機能15+世界観5)の派生計算+ CSV 付与** | ✅ 完了 (`catalog_x20.py`)。軸定義は Kawanoさん と要相談 |
+| **v1.3-D** | **Kawanoさん interface: `/v13/pair_compare/{init,apply}` `/v13/update_user` `/v13/recommend`** | ✅ 完了 (`app.py` + `KAWANO_INTERFACE.md`) |
 | **v1.3-E** | **E2E 統合疎通(`test_v13_flow.py`)** | ✅ μ_thickness 学習で TOP-N 順位が動くことを確認 |
 
-## v1.3 Kawano interface(2026-05-29 実装)
+## v1.3 Kawanoさん interface(2026-05-29 実装)
 
-ハルキ API は**ステートレス計算サーバー**として実装。caller(Kawano AR or 中継 GAS/BE)が
+lip API は**ステートレス計算サーバー**として実装。caller(Kawanoさん AR or 中継 GAS/BE)が
 `UserState` を保持し、リクエスト毎に丸ごと送る → 計算結果と更新後 state を返す → caller が保存する。
 
 エンドポイント:
@@ -318,7 +318,7 @@ products_with_lab.csv からロード。
 - `POST /v13/update_user` — 観測ログ(AR like/dislike + thickness)→ ベイズ更新
 - `POST /v13/recommend` — UserState だけで TOP-N(km_table 内部生成)
 
-詳細は **`KAWANO_INTERFACE.md`**。Kawano からまだ何も来ていない前提のため、ペア定義・x_20軸・
+詳細は **`KAWANO_INTERFACE.md`**。Kawanoさん からまだ何も来ていない前提のため、ペア定義・x_20軸・
 データ形式・通信方式・状態の置き場所はすべて「叩き台」。同ファイル §5 に議論ポイント7項目を明記。
 
 ## 次回の進め方 / TODO

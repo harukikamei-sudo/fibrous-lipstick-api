@@ -48,7 +48,7 @@ class UserState(BaseModel):
     """
     user_id: str
     lip_lab: LabValue = Field(..., description="ノーリップ唇 Lab(初回診断で固定)")
-    pc_season: Optional[PCSeason] = Field(None, description="Kawano の PC 判定結果")
+    pc_season: Optional[PCSeason] = Field(None, description="Kawanoさん の PC 判定結果")
     theta_color: GaussianLab
     theta_pref: GaussianVec20
     theta_explore: GaussianScalar = Field(
@@ -61,7 +61,7 @@ class UserState(BaseModel):
     )
 
 
-# ============ 観測ログ(Kawano AR → ハルキ) ============
+# ============ 観測ログ(Kawanoさん AR → lip API) ============
 
 ObservationSource = Literal[
     "pc_diagnosis",      # Part I    PC 診断由来

@@ -532,27 +532,27 @@ t スライダー → 塗り重ねラジオ。
 PC 連携実装方針が違う / GAS vs Python。
 
 新セッションでユーザーから方針提示:
-> 「唇 Lab・AR・PC 判定は Kawano、それを俺が受けてシミュできるようにして」
-> 「Kawano からはまだ何も来てない前提。連携しやすいように作って」
+> 「唇 Lab・AR・PC 判定は Kawanoさん、それを俺が受けてシミュできるようにして」
+> 「Kawanoさん からはまだ何も来てない前提。連携しやすいように作って」
 
-→ 設計書 v1.3 §2.4 の役割分担に忠実に従う方向で合意。ハルキ API は
+→ 設計書 v1.3 §2.4 の役割分担に忠実に従う方向で合意。lip API は
 **ステートレス計算サーバー**として実装する方針を採用。
 
 ### 設計判断 1: ステートレス API + caller が UserState を保持
 
 最初は GAS+Spreadsheet が state holder という前提で API spec を組んでいたが、
-「Kawano からまだ何も来てない前提」のユーザーフィードバックを受けて、永続化先を
+「Kawanoさん からまだ何も来てない前提」のユーザーフィードバックを受けて、永続化先を
 固定しない方向に転換。caller(GAS でも Firebase でも自前 BE でも何でも)が
 UserState を丸ごと round-trip する素直な構造に。
 
 **判断の理由:**
 - caller の選択肢を狭めない
-- ハルキ側で DB を持たないので運用が軽い
+- lip API 側で DB を持たないので運用が軽い
 - UserState は 20次元 vec × 2 + Lab × 2 + スカラー × 4 で約 50 数値 → 軽量
 
 ### 設計判断 2: `/v13/recommend` は km_table を要求しない素直版
 
-当初は「caller が km_table を保持 → 毎回送る」設計だったが、これだと Kawano が
+当初は「caller が km_table を保持 → 毎回送る」設計だったが、これだと Kawanoさん が
 145商品 × 21段 = 3,066 行のテーブルを GAS で持つ必要があり負担大。
 
 → **`/v13/recommend` は UserState のみで動く**ように変更。内部で K-M テーブルを
@@ -567,7 +567,7 @@ UserState を丸ごと round-trip する素直な構造に。
 
 **対応:** `catalog_x20.py` で Lab + line_category + hue から派生計算する
 暫定軸を 20 個定義(pigmentation, vivid, transparency, glossiness, ... mature)。
-145 商品全部に CSV 列として付与した。ユーザー(or Kawano)が後で手動付与に
+145 商品全部に CSV 列として付与した。ユーザー(or Kawanoさん)が後で手動付与に
 切り替えたい場合は `AXIS_NAMES` と CSV 列を書き換えるだけで反映される構造に。
 
 **学び:** 設計書の抽象的な部分は「派生計算でデフォルト埋め、軸定義の差し替え点を
@@ -642,7 +642,7 @@ v13 用の `_km_table_for_user` 内で `LabValueV13` を使い、既存コード
 
 ### 設計判断 3: KAWANO_INTERFACE.md は「決定」ではなく「議論ポイント」
 
-ユーザーから強調された「Kawano からまだ何も来てない前提」に従い、API spec を
+ユーザーから強調された「Kawanoさん からまだ何も来てない前提」に従い、API spec を
 「これで叩いてくれ」式に書くのを避け、`KAWANO_INTERFACE.md §5` に **議論ポイント
 7 項目** を明示:
 
@@ -670,9 +670,9 @@ v13 用の `_km_table_for_user` 内で `LabValueV13` を使い、既存コード
    `estimate_s_layered` で上書き可能。
 5. **似合い度の評価軸拡張**: 現状は色差(ΔE2000)+ PC領域距離のみ。明度コントラスト、
    肌・髪との調和は未実装。
-6. **Kawano interface の確定**(`KAWANO_INTERFACE.md §5` の 7 項目):
+6. **Kawanoさん interface の確定**(`KAWANO_INTERFACE.md §5` の 7 項目):
    ペア定義 / x_20 軸 / データ形式 / 通信方式 / 観測ログ拡張 / テーブル事前計算 /
-   認証。Kawano からのフィードバックを受けて詰める。
+   認証。Kawanoさん からのフィードバックを受けて詰める。
 7. **ペア提示の Active Learning**(設計書 §12.2): 現状 10 ペア固定。不確実性の
    高い軸からペアを動的選択する Phase 2 拡張。
 8. **「微妙」観測の活用**(設計書 §12.7): MVP は ar_view_like のみベイズ更新に

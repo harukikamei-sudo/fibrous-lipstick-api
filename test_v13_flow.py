@@ -1,6 +1,6 @@
 """設計書 v1.3 全フローの統合疎通テスト(TestClient ベース)。
 
-シナリオ(Kawano 視点):
+シナリオ(Kawanoさん 視点):
     1. GET  /v13/pair_compare/init → 10 ペア取得
     2. POST /v13/pair_compare/apply (PC=ブルベ夏 + 全 left 選択)
         → 4 つの事前分布 (θ_color/θ_pref/θ_explore/θ_thickness)

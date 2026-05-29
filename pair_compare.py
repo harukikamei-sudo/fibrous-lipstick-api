@@ -152,7 +152,7 @@ def _build_pair_bank() -> List[PairQuestion]:
     return pairs
 
 
-# モジュール起動時に1回ロード。Kawano が叩く都度ファイル読み込みを避ける。
+# モジュール起動時に1回ロード。Kawanoさん が叩く都度ファイル読み込みを避ける。
 PAIR_BANK: List[PairQuestion] = _build_pair_bank()
 
 

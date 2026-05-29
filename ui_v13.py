@@ -218,7 +218,7 @@ with st.sidebar:
 # ============ Main: ヘッダー ============
 
 st.title("💄 Fibrous Lipstick — v1.3 ベイズループ可視化")
-st.caption("Kawano が AR で叩く想定の API を、Streamlit から GUI で疎通体験できる版")
+st.caption("Kawanoさん が AR で叩く想定の API を、Streamlit から GUI で疎通体験できる版")
 
 tab_pair, tab_ar, tab_dash = st.tabs([
     "📋 ペア比較",
@@ -232,7 +232,7 @@ tab_pair, tab_ar, tab_dash = st.tabs([
 with tab_pair:
     st.header("Part II: 強制ペア比較 10 問")
     if st.session_state.pairs is None:
-        st.info("「ペアを取得して開始」を押すと、ハルキ API に 10 ペアを要求します。")
+        st.info("「ペアを取得して開始」を押すと、lip API に 10 ペアを要求します。")
         if st.button("📥 ペアを取得して開始"):
             res = api_call("GET", "/v13/pair_compare/init")
             st.session_state.pairs = res["pairs"]
