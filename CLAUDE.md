@@ -5,7 +5,9 @@
 >
 > **理論・式の導出・計算過程・なぜその値か は [DESIGN.md](DESIGN.md)(ロジック設計書)** に集約。
 > **API の使い方(curl 例・レスポンス例)は [API_GUIDE.md](API_GUIDE.md)**。
-> CLAUDE.md=運用/進捗/申し送り、DESIGN.md=数理の根拠、API_GUIDE.md=エンドポイント実用書。
+> **各意思決定の背景・失敗試行・採用根拠は [LOG.md](LOG.md)(開発ログ)** に時系列で残す。
+> CLAUDE.md=運用/進捗/申し送り、DESIGN.md=数理の根拠、API_GUIDE.md=エンドポイント実用書、
+> LOG.md=「なぜそうした/しなかった」の物語。
 
 ## プロジェクト概要
 
@@ -68,6 +70,7 @@ fibrous-lipstick-api/
 ├── README.md          HF Spaces 用フロントマター付き
 ├── DESIGN.md          ★ロジック設計書(理論/式の導出/計算過程/コード対応)
 ├── API_GUIDE.md       ★API 使い方ガイド(全エンドポイントの curl 例+レスポンス例)
+├── LOG.md             ★開発ログ(各意思決定の目的/試行/失敗/採用根拠を時系列で)
 └── DEPLOY.md          push 手順
 ```
 
