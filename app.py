@@ -37,6 +37,23 @@ import extract_lab as el
 import estimate_s as es  # 雛形
 import km  # 雛形
 
+# ---- 設計書 v1.3 拡張 ----
+import bayesian
+import pair_compare as pc_mod
+import recommend_v2 as rec_v2
+from catalog_x20 import load_x20_from_row
+from models_v13 import (
+    KMTableRow,
+    LabValue as LabValueV13,
+    PairApplyRequest,
+    PairApplyResponse,
+    PairInitResponse,
+    RecommendV2Request,
+    RecommendV2Response,
+    UpdateUserRequest,
+    UpdateUserResponse,
+)
+
 
 # ============ 設定 ============
 
@@ -79,6 +96,8 @@ def _load_catalog() -> List[Dict]:
                 # ★PC 連携用: カタログのタグは「答え合わせ用」として保持。
                 # 推奨ロジックでは使わない(参考表示のみ)。
                 "pc_tags": _parse_pc_tags(row.get("pc_season", "")),
+                # v1.3: 20次元 pref ベクトル(機能15 + 世界観5)
+                "x20": load_x20_from_row(row),
             })
     return items
 
@@ -410,6 +429,11 @@ def root():
             "/compute_km_table",
             "/recommend",
             "/evaluate",
+            # v1.3 (Kawano interface 提案・仮)
+            "/v13/pair_compare/init",
+            "/v13/pair_compare/apply",
+            "/v13/update_user",
+            "/v13/recommend",
         ],
         "catalog_size": len(CATALOG),
     }
@@ -607,6 +631,107 @@ def recommend_endpoint(req: RecommendRequest):
         sort_target=LabValue(L=target[0], a=target[1], b=target[2]),
         results=results,
     )
+
+
+# ============ 設計書 v1.3 エンドポイント群 ============
+# 設計方針:
+#   - すべてステートレス。caller(Kawano AR / GAS / 他バックエンド)が
+#     UserState を保持し、リクエスト毎に丸ごと渡す。
+#   - 永続化先(GAS/Spreadsheet/Firebase/SQLite 等)は caller の自由。
+#   - データ形式は議論段階。Kawano と相談して固める想定。
+
+def _km_table_for_user(
+    lip: List[float],
+    line_category_filter: Optional[str],
+) -> List[KMTableRow]:
+    """全カタログ × 21 段(t=0.00 .. 1.00)の applied_Lab テーブル。
+
+    in-memory ループ計算で十分高速(145 × 21 ≈ 3000 行)。
+    caller が毎回送るより API 内部で生成する方が線が細い → 主軸。
+    """
+    rows: List[KMTableRow] = []
+    for p in CATALOG:
+        if line_category_filter and p["line_category"] != line_category_filter:
+            continue
+        ks = km.ks_from_lab(p["lab"])
+        s, _ = km.resolve_line_s(line_id=p["line_id"],
+                                 line_category=p["line_category"])
+        applied: List[LabValueV13] = []
+        for i in range(21):
+            t = i / 20.0
+            a = km.compute_applied_lab(lip, ks, s, t)
+            applied.append(LabValueV13(
+                L=float(a[0]), a=float(a[1]), b=float(a[2])
+            ))
+        rows.append(KMTableRow(
+            product_id=p["id"],
+            applied=applied,
+            x20=list(p.get("x20", [0.0] * 20)),
+            pc_tags=list(p.get("pc_tags", [])),
+            name=p.get("name", ""),
+            line_category=p.get("line_category", ""),
+        ))
+    return rows
+
+
+@app.get("/v13/pair_compare/init", response_model=PairInitResponse)
+def v13_pair_compare_init():
+    """Part II 強制ペア比較の 10 ペアを返す。
+
+    caller(Kawano)はユーザーに各ペアの left/right を提示し、選択を集めて
+    `/v13/pair_compare/apply` に送る。ペアの中身は MVP では仮データ。
+    """
+    return pc_mod.get_pair_bank()
+
+
+@app.post("/v13/pair_compare/apply", response_model=PairApplyResponse)
+def v13_pair_compare_apply(req: PairApplyRequest):
+    """ペア選択 → θ_color/θ_pref/θ_explore/θ_thickness の初期事前分布。
+
+    caller は返り値の 4 つの分布をそのまま users スプレッドシート等に保存し、
+    以後のリクエストでは UserState の中に詰めて送る。
+    """
+    return pc_mod.apply_pair_choices(req)
+
+
+@app.post("/v13/update_user", response_model=UpdateUserResponse)
+def v13_update_user(req: UpdateUserRequest):
+    """既存 user state + 新観測 → 更新後の user state を返す。
+
+    観測ソース: pair_color / pair_worldview / dialog / behavior /
+                ar_view_like / ar_view_dislike(設計書 §7.1)。
+    caller は返り値の UserState で自前ストレージを上書き保存する。
+    """
+    new_user, n_applied = bayesian.apply_observations(req.user, req.observations)
+    return UpdateUserResponse(user=new_user, n_applied=n_applied)
+
+
+@app.post("/v13/recommend", response_model=RecommendV2Response)
+def v13_recommend(req: RecommendV2Request):
+    """設計書 Part IV/VI 統合スコアで TOP-N。
+
+    入力: UserState のみで OK(km_table は省略可、内部で生成)。
+    出力: 各商品の effective_Lab / f / familiarity / R_final 含む TOP-N。
+    """
+    if req.km_table is None:
+        if not CATALOG:
+            raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+        lip = [req.user.lip_lab.L, req.user.lip_lab.a, req.user.lip_lab.b]
+        km_table = _km_table_for_user(lip, req.line_category)
+    else:
+        km_table = req.km_table
+
+    # km_table をリクエストに詰め直して recommend_v2 を呼ぶ
+    full_req = RecommendV2Request(
+        user=req.user,
+        km_table=km_table,
+        line_category=req.line_category,
+        top_n=req.top_n,
+        alpha=req.alpha,
+        beta_max=req.beta_max,
+        familiarity_weights=req.familiarity_weights,
+    )
+    return rec_v2.recommend_v2(full_req)
 
 
 def _interpret_match_rate(r: float) -> str:

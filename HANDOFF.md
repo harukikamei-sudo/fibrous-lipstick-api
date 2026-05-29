@@ -3,8 +3,8 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-05-29 (Opus 4.7 / 1M context)
-最新 commit (origin & hf 同期済み): `e8ccb26` (fix(ui): smooth mask contour ...)
+最終更新: 2026-05-29 (Opus 4.7 / 1M context) — **設計書 v1.3 個人化学習層を実装**
+最新 commit (origin & hf 同期済み): 本セッションで commit → HANDOFF §3 表を参照
 
 ---
 
@@ -25,9 +25,10 @@ rom&nd 1ブランド145商品を対象に、唇の Lab + 商品 + 厚みから K
 |---|---|---|
 | ① | **HANDOFF.md (このファイル)** | 直近の状態・未解決事項・新セッション起点 |
 | ② | **[CLAUDE.md](CLAUDE.md)** | 運用・進捗・申し送り |
-| ③ | **[DESIGN.md](DESIGN.md)** | 理論・式の導出・計算過程・なぜその値か |
-| ④ | **[LOG.md](LOG.md)** | 各意思決定の目的・試行・失敗・採用根拠(時系列) |
-| ⑤ | **[API_GUIDE.md](API_GUIDE.md)** | エンドポイント使い方(curl 例・レスポンス例) |
+| ③ | **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** | ★v1.3 個人化学習層の Kawano interface(議論ポイント付き) |
+| ④ | **[DESIGN.md](DESIGN.md)** | 理論・式の導出・計算過程・なぜその値か |
+| ⑤ | **[LOG.md](LOG.md)** | 各意思決定の目的・試行・失敗・採用根拠(時系列) |
+| ⑥ | **[API_GUIDE.md](API_GUIDE.md)** | エンドポイント使い方(curl 例・レスポンス例) |
 
 > **設計書 PDF** (`/Users/Friday/Downloads/口紅推奨ロジック設計書_VN1_3 (1).pdf`)
 > は v1.3、**現状の実装と乖離あり**(§5 参照)。
@@ -50,6 +51,13 @@ rom&nd 1ブランド145商品を対象に、唇の Lab + 商品 + 厚みから K
 | 拡大モーダル (Before/After) | ✅ |
 | 画像アセット git 除外方針 | ✅ (HF binary policy で履歴書き換え対応済み) |
 | 全テスト (test_km.py 性質1〜8) | ✅ pass |
+| **設計書 v1.3 個人化学習層 (本セッション追加)** | ✅ |
+| ├ 4 θ ベイズ更新 (color/pref/explore/thickness) | ✅ `bayesian.py` + test 8件 |
+| ├ effective_Lab 線形補間 + Part IV/VI 統合スコア | ✅ `recommend_v2.py` + test 7件 |
+| ├ 強制ペア比較 10問(色5 + 世界観5、仮データ) | ✅ `pair_compare.py` |
+| ├ 20次元 pref ベクトル(機能15 + 世界観5、派生計算) | ✅ `catalog_x20.py` + CSV 列付与済 |
+| ├ Kawano interface 4 エンドポイント | ✅ `/v13/pair_compare/init,apply` `/v13/update_user` `/v13/recommend` |
+| └ E2E 統合疎通テスト | ✅ `test_v13_flow.py`(μ_thickness 学習で TOP 順位変動を確認) |
 
 最新の git 状態:
 ```
@@ -81,7 +89,23 @@ fibrous-lipstick-api/
 
 ---
 
-## 5. **直近の重大な発見 — 設計書 v1.3 とのギャップ**
+## 5. ~~設計書 v1.3 ギャップ~~ **大部分解決済(2026-05-29)**
+
+本セッション(Opus 4.7)で個人化学習層の主要4ギャップを実装。
+
+| 旧ギャップ | 状態 |
+|---|---|
+| 1. 個人化学習が無い | ✅ `bayesian.py` で 4 θ ガウス更新 実装 |
+| 2. 強制ペア比較が無い | ✅ `pair_compare.py` で 10 ペア仮データ + 事前分布構築 |
+| 3. 20次元 pref ベクトルが無い | ✅ `catalog_x20.py` で派生計算、CSV 付与済 |
+| 4. PC連携実装方針が違う | ⚠️ 既存ハード距離マッチングは維持(MVP の高精度実装、0.81 達成)。Bayesian 事前分布側の経路も新規実装で並走 |
+| 5. GAS vs Python | 🤝 ステートレス Python API として実装。永続化先(GAS/Firebase/他)は Kawano 次第 |
+
+詳細は `KAWANO_INTERFACE.md` 参照。以下、旧ドキュメント原文を残置:
+
+---
+
+### 旧: 設計書 v1.3 とのギャップ(参考)
 
 ユーザーから設計書 PDF を共有された (2026-05-29 14:10) 。
 v1.3 の正式構造は以下の 6 Part:
@@ -130,21 +154,33 @@ Part VI   セレンディピティ    → R_final = f - β(μ_explore)·familiar
 
 ---
 
-## 6. **次セッション開始時の最初のユーザー入力(待ち状態)**
+## 6. **次セッション開始時の状態**
 
-最後の私(Opus 4.7)の発言で、4つの選択肢を提示した:
+ユーザー方針(2026-05-29 回答済):
+> 「唇Lab・AR・PC判定は Kawano がやるから、それを俺が受け取ってシミュできるようにして」
+> 「Kawano からはまだ何も来てない前提で、連携しやすいように作る」
 
-> どの方向で進めるかで次の動きが変わります。どうしたいですか？
+→ 設計書 v1.3 の役割分担に従い、**ハルキ API はステートレス計算サーバー**として実装完了。
+   Kawano からの interface 確定待ち(`KAWANO_INTERFACE.md` §5 に議論ポイント7項目)。
 
-- **A. 現状で Mina さん向けデモ実施**: PC × 唇色 × 物理計算の静的版で見せる。
-  個人化進化体験は無いが見栄え・物理は強い
-- **B. 設計書の残り(Part II/III/IV完全/VI)を実装**: 個人化学習込みの完全 MVP。1〜2 週間
-- **C. GAS への移植 + Kawano 連携**: 設計書の役割分担に完全準拠。中規模工数
-- **D. ハイブリッド**: 現状の Python API は維持して**ベイズ更新と observations 収集だけ追加** →
-  「ミナの好み学習」を Python 側で実現、Kawano AR は将来連携
+### 待ち状態(Kawano との合意事項)
 
-→ **ユーザーの返答待ち**。新セッションの最初に「どれで進めるか」を聞くか、
-ユーザーから方針が来たらそれに従う。
+| # | 議論ポイント | デフォルト実装 |
+|---|---|---|
+| 1 | データ形式(Lab dict vs array、UserState 往復のサイズ) | dict 形式、丸ごと往復 |
+| 2 | 通信モデル(同期 REST、CORS) | 同期 REST、CORS=`*` |
+| 3 | ペア比較10問の中身(商品の組み合わせ・提示順) | 俺が仮で組んだ `_PAIR_SPECS` |
+| 4 | x_20 軸の20軸定義(機能15+世界観5) | 派生計算による暫定軸 |
+| 5 | 観測ログの拡張余地(`extras`, `viewed_seconds`) | `extras` 無し、`viewed_seconds` 任意 |
+| 6 | K-M テーブルの事前計算 vs 都度計算 | 都度計算(MVP は十分高速) |
+| 7 | 認証 / users 永続化(ハルキ側 or Kawano 側) | ハルキ側 DB なし(caller が保持) |
+
+### 直近のオプション
+
+- **a. このまま Kawano に「叩き台 ready」と連絡** → 1〜7 を相談しながら詰める
+- **b. ミナさん向けデモを Streamlit Lv2 のまま実施** → 個人化学習を組み込んだ UI に拡張
+- **c. 既存 `/recommend` (ハード距離マッチング、0.81 達成) を本番継続、`/v13/*` は実験ライン**
+- **d. Streamlit UI を v1.3 ベイズ更新ループに対応させる**(AR スライダー + いいね/微妙)
 
 ---
 
