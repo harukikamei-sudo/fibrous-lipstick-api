@@ -125,8 +125,9 @@
 │ ④ POST /v13/recommend                                                    │
 │    用途: 現在の UserState で TOP-N 推薦を取得                            │
 │    入力: { user: UserState, top_n: 5 }                                   │
-│    出力: { results: [{product_id, effective_Lab, r_final, ...}×N] }      │
-│         → Kawanoさん は effective_Lab を唇に合成、AR で表示                   │
+│    出力: { results: [{product_id, name, image_url, effective_lab,        │
+│                       r_final, ...}×N] }                                 │
+│         → effective_lab を唇に合成、image_url を商品サムネに使う             │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -314,6 +315,8 @@ cd ~/Desktop/fibrous-lipstick-api
 ```
 
 → ブラウザでペア選択 → AR 試着 → ベイズ更新を画面で体験(裏で動いてる API・数式・状態も右パネルに表示)。
+
+**サイドバーで顔写真をアップロード**すると、TOP-N の各商品が**実写の唇に合成された絵**で表示されます(設計書 Part V の Kawanoさん側 AR 表示の代用デモ)。唇マスクは自動抽出、唇 Lab も自動計測。
 
 ### 8.4 「自分の言語」で叩いてみる(JS/curl/postman など何でも)
 

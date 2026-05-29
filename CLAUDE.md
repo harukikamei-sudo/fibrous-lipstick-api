@@ -83,8 +83,15 @@ fibrous-lipstick-api/
 ├── catalog_x20.py     ★x_20(機能15+世界観5)派生計算 + CSV 付与スクリプト
 ├── test_bayesian.py      ベイズ更新の性質テスト(8件)
 ├── test_recommend_v2.py  統合スコアのテスト(7件)
+├── test_v13_endpoints.py ★/v13/* エンドポイント単体テスト(11件、正常+エラー)
 ├── test_v13_flow.py      E2E 統合疎通(/v13/* 4 エンドポイント)
-└── KAWANO_INTERFACE.md ★Kawanoさん 向け API spec(議論ポイント7項目)
+├── personalization_demo.py ★3 ペルソナ分岐の一発検証(スモークテスト)
+├── personas_cli.py    ★3 ペルソナ並走シミュレータ(対話型 CLI、formula で式一致確認)
+├── ui_v13.py          ★Streamlit 可視化(ペア+AR試着+ダッシュボード+実写合成)
+├── .github/workflows/test.yml ★CI(push/PR で Python 3.11/3.12 × 6 テスト群)
+├── KAWANO_INTERFACE.md ★Kawanoさん向け API spec(議論ポイント7項目、curl 例)
+├── KAWANO_HANDOFF.md   ★Kawanoさん相談用(役割分担・フロー図・1ページ概要)
+└── SIMULATOR_GUIDE.md  ★personas_cli.py の取説 + 数式 + 検証ハイポセシス
 ```
 
 ## 重要な設計判断
@@ -306,6 +313,10 @@ products_with_lab.csv からロード。
 | **v1.3-C** | **20次元 pref ベクトル(機能15+世界観5)の派生計算+ CSV 付与** | ✅ 完了 (`catalog_x20.py`)。軸定義は Kawanoさん と要相談 |
 | **v1.3-D** | **Kawanoさん interface: `/v13/pair_compare/{init,apply}` `/v13/update_user` `/v13/recommend`** | ✅ 完了 (`app.py` + `KAWANO_INTERFACE.md`) |
 | **v1.3-E** | **E2E 統合疎通(`test_v13_flow.py`)** | ✅ μ_thickness 学習で TOP-N 順位が動くことを確認 |
+| **v1.3-F** | **`image_url` を /v13/recommend レスポンスに含める** | ✅ Kawanoさん AR がそのままサムネ表示可 |
+| **v1.3-G** | **エンドポイント単体テスト(`test_v13_endpoints.py`)** | ✅ 11件(正常 + 422 + dislike + filter + serendipity) |
+| **v1.3-H** | **Streamlit 実写唇合成統合** | ✅ サイドバー顔写真→マスク自動抽出→TOP-N に composite_lip |
+| **v1.3-I** | **GitHub Actions CI** | ✅ push/PR で Python 3.11/3.12 × 6 テスト群を自動実行 |
 
 ## v1.3 Kawanoさん interface(2026-05-29 実装)
 

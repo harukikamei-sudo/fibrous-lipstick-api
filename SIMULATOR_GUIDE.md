@@ -465,6 +465,18 @@ $$R(t) = \frac{1 - R_{lip}(a - b \coth(bSt))}{(a - R_{lip}) + b \coth(bSt)}$$
 - [HANDOFF.md](HANDOFF.md) — 全体の引き継ぎ
 - [CLAUDE.md](CLAUDE.md) — プロジェクト概要
 - [DESIGN.md](DESIGN.md) — 元の設計理論
-- [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) — API spec(技術詳細)
-- [KAWANO_HANDOFF.md](KAWANO_HANDOFF.md) — Kawanoさん と相談用(役割分担)
-- [LOG.md](LOG.md) — 開発ログ(エポック10 が v1.3 個人化層)
+- [API_GUIDE.md](API_GUIDE.md) — `/v13/*` 含む全エンドポイントの curl 例
+- [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) — API spec(技術詳細・議論ポイント)
+- [KAWANO_HANDOFF.md](KAWANO_HANDOFF.md) — Kawanoさんと相談用(役割分担・フロー図)
+- [LOG.md](LOG.md) — 開発ログ(エポック10 が v1.3、エポック11 が今回の磨き)
+
+## 別の触り方(任意)
+
+CLI 以外にも 2 つの検証手段が用意されている:
+
+- **`personalization_demo.py`** — 一発実行型(CI でも回る、スモークテスト用)
+- **`ui_v13.py`** — Streamlit ブラウザ UI、ペア比較 + AR 試着ループを GUI で
+  操作。サイドバーから顔写真をアップロードすると、TOP-N に **実写唇合成**(K-M
+  effective_Lab を実際の唇に適用した絵)が表示される。
+
+詳細は KAWANO_HANDOFF.md §8 を参照。

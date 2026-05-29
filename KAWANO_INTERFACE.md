@@ -222,6 +222,7 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
       "product_id": "rmd_blur_fudge_02",
       "name": "...",
       "line_category": "matte",
+      "image_url": "https://cloudflare.lipscosme.com/image/...",  // ★商品サムネ
       "effective_lab": { "L": 46.4, "a": 42.4, "b": 21.3 },  // ★AR に渡す Lab
       "delta_e_to_color": 2.91,
       "pref_match": 0.0,
@@ -239,6 +240,8 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
 これは「ユーザーの μ_thickness(現在の塗り厚好み)で K-M 計算した塗布後 Lab」。
 ユーザーが AR スライダーを動かしたら、その値を `thickness` として観測ログに送ると
 学習が進んで TOP-N の `effective_lab` も追従して動きます。
+
+**★ 商品サムネは `image_url`** をそのまま `<img src>` に渡せばOK(lipscosme の CDN URL)。
 
 ---
 

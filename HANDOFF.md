@@ -3,8 +3,10 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-05-29 (Opus 4.7 / 1M context) — **設計書 v1.3 個人化学習層を実装**
-最新 commit (origin & hf 同期済み): 本セッションで commit → HANDOFF §3 表を参照
+最終更新: 2026-05-29 (Opus 4.7 / 1M context) — **設計書 v1.3 完全実装 + 検証 + CI**
+最新 commit (origin & hf 同期済み): `4bde916` (image_url + endpoint tests + CI + real-lip compositing)
+全テスト: 32 件合格(bayesian 8, recommend_v2 7, v13_endpoints 11, v13_flow E2E 6)
+CI: GitHub Actions で Python 3.11/3.12 を自動回転
 
 ---
 
@@ -57,7 +59,12 @@ rom&nd 1ブランド145商品を対象に、唇の Lab + 商品 + 厚みから K
 | ├ 強制ペア比較 10問(色5 + 世界観5、仮データ) | ✅ `pair_compare.py` |
 | ├ 20次元 pref ベクトル(機能15 + 世界観5、派生計算) | ✅ `catalog_x20.py` + CSV 列付与済 |
 | ├ Kawanoさん interface 4 エンドポイント | ✅ `/v13/pair_compare/init,apply` `/v13/update_user` `/v13/recommend` |
-| └ E2E 統合疎通テスト | ✅ `test_v13_flow.py`(μ_thickness 学習で TOP 順位変動を確認) |
+| ├ エンドポイント単体テスト | ✅ `test_v13_endpoints.py` 11件(正常+エラー) |
+| ├ E2E 統合疎通テスト | ✅ `test_v13_flow.py`(μ_thickness 学習で TOP 順位変動を確認) |
+| ├ `image_url` をレスポンスに含める | ✅ Kawanoさん AR がそのまま商品サムネ表示可 |
+| ├ Streamlit 実写唇合成統合 | ✅ `ui_v13.py` で顔写真→マスク抽出→TOP-N に effective_Lab で合成表示 |
+| ├ 個人化検証ツール 3 種 | ✅ `personalization_demo.py` / `personas_cli.py` / `ui_v13.py` |
+| └ GitHub Actions CI | ✅ push/PR で Python 3.11/3.12 × 6テスト自動実行 |
 
 最新の git 状態:
 ```

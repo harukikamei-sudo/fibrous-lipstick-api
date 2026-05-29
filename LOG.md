@@ -660,6 +660,96 @@ v13 用の `_km_table_for_user` 内で `LabValueV13` を使い、既存コード
 
 ---
 
+## エポック 11: Kawanoさん待ち期間の磨き(2026-05-29 同日)
+
+### 背景
+エポック 10 で v1.3 個人化学習層を実装したが、Kawanoさんからの返事を待たないと
+進められない事項(ペア定義・x_20 軸の最終合意など)が残っていた。その間に
+「lip API 側で磨ける任意作業」を 5 つ一気に片付けた。
+
+### 1. `image_url` を `/v13/recommend` レスポンスに追加
+
+**動機:** Kawanoさん AR が商品サムネを表示する時に必要になる。後で「追加して」と
+依頼される前に先に積んでおく方が連携摩擦が少ない。
+
+**実装:** `models_v13.KMTableRow` / `RecommendV2Item` に `image_url: Optional[str]`
+追加、`app._load_catalog()` で CSV の `image_url` 列を保持、`_km_table_for_user`
+で渡す経路を通す、`recommend_v2.recommend_v2` で出力に詰める。
+
+### 2. `test_v13_endpoints.py` で 11 件の単体テスト
+
+**動機:** これまでは `test_bayesian.py`(8件)+ `test_recommend_v2.py`(7件)+
+`test_v13_flow.py`(E2E 6ステップ)はあったが、**個別エンドポイントの境界条件**
+(空観測 → 422、未知 pair_id → 飛ばし、dislike の y 反転、etc)が網羅されて
+いなかった。
+
+**カバレッジ:**
+- `/v13/pair_compare/init`: 10 ペア固定、color:worldview = 5:5
+- `/v13/pair_compare/apply`: 正常 / 未知 pair_id 飛ばし / 空 choices → 422 /
+  pc_season 未指定 fallback
+- `/v13/update_user`: 正常 / 空 observations → 422 / dislike の y=-1 で θ_color
+  が観測の逆方向に動く
+- `/v13/recommend`: 全フィールド存在確認 / `image_url` 含む / line_category
+  フィルタ / μ_thickness 変化で effective_lab 変化 / explore 変化で β 変化
+
+### 3. `API_GUIDE.md` に `/v13/*` セクション追加
+
+**動機:** 既存の `/recommend` / `/evaluate` 用 curl 例ガイドに、v1.3 系の例が
+無かった。Swagger UI と KAWANO_INTERFACE.md があれば本来は十分だが、「curl で
+さっと試したい」需要に応える。
+
+**追加内容:** 4 エンドポイントの curl 例 + Observation スキーマ(source 別の
+σ²_obs マッピング表)+ 422 トラブルシュート。
+
+### 4. `ui_v13.py` に実写唇合成を統合
+
+**動機:** これまでは Streamlit UI で TOP-N の effective_lab を「色チップ」で
+だけ見せていた。設計書 Part V の Kawanoさん AR 表示(顔写真 + 唇マスク + 質感合成)
+を代用デモする機能が欲しかった。
+
+**実装:** `ui_app.py` の既存関数 `extract_lip_mask` / `composite_lip` /
+`measure_lip_lab` / `TEXTURE_BY_CATEGORY` を import。サイドバーに顔写真
+アップローダーを追加し、アップロードで:
+1. 唇マスク自動抽出(8 連結 morpho + 中心 y 自動検出、ui_app.py 由来)
+2. 唇 Lab 自動計測(平均シフト+偏差保持の Lab 再着色)
+3. UI 上に画像 + 緑オーバーレイマスクをプレビュー
+
+そして Tab 2 の各 TOP-N アイテムで色チップを `composite_lip(rgb, alpha,
+effective_lab, texture_strength)` の結果に差し替え。質感は line_category 別に
+自動(matte=0.75, velvet=0.9, tint=1.0, gloss=1.5)。
+
+### 5. `.github/workflows/test.yml` で CI
+
+**動機:** lip API はステートレスでテストしやすいので、push のたびに全テストが
+回る safety net を入れる価値が高い。エポック 10 で 32 件のテストが揃ったタイミ
+ングで CI を組むのが自然。
+
+**構成:** push to main + PR + workflow_dispatch トリガ、Python 3.11 / 3.12
+matrix、libgl1 を apt で入れて skimage を動かす、`httpx` を pip で追加
+(TestClient のバックエンド)、6 テストファイルを順次実行。
+
+**小さい引っかかり:** GitHub OAuth トークンに `workflow` スコープが無く、初回
+push が拒否された。`gh auth refresh -h github.com -s workflow` で 1 回スコープ
+追加 → 解消。HF Spaces は workflow ファイルを実行しないので、HF push は通常通り
+成功(Docker ビルドのみ)。
+
+### 結果
+- 全テスト 32 件パス(local + CI 両方)
+- HF Spaces 本番 API には `image_url` 含む新レスポンスが反映済
+- Streamlit デモがプレゼンテーション品質に
+- 今後の push に自動 safety net
+
+### 学び: 「相手待ち」期間の使い方
+連携先が動かない状況で、選択肢が 3 つある:
+1. 待つ(時間損失)
+2. 連携先の領域に手を出す(摩擦リスク)
+3. **自分の領域で磨く(本セッションの選択)**
+
+選択 3 を取る時は「相手の動きに左右されない仕様(image_url 追加・テスト・CI)」
+だけ選ぶのがコツ。ペア定義や x_20 軸など「相手の意向次第」のものは触らない。
+
+---
+
 ## 残課題(後続のため)
 
 1. **`healthy_pink × イエベ秋 = 0.60`** が唯一の acceptable。境界ケース、深追いせず。
