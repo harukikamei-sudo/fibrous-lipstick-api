@@ -130,21 +130,14 @@ def _dummy_lip(preset_name, w=400, h=300):
     return rgb_s.astype(np.uint8), al
 
 
-def extract_lip_mask(rgb_uint8, central_bbox=(0.30, 0.70, 0.46, 0.70),
-                     a_min=15, chroma_min=18, L_min=24, L_max=72,
-                     erosion=1, dilation=0, sigma=1.8):
+def extract_lip_mask(rgb_uint8, central_bbox=(0.32, 0.68, 0.48, 0.66),
+                     a_min=15, chroma_min=18, L_min=22, L_max=72,
+                     erosion=1, dilation=0, sigma=1.8, band_half_pct=0.05):
     """RGB 画像から唇の羽化αマスク(0-1 float, HxW)を自動抽出。
 
-    顔の正面ポートレート(唇が画面中央下あたり)を想定。Lab の彩度しきい値で
-    唇候補画素を抽出 → 中央領域に限定 → 最大連結成分 → 穴埋め → クロージング
-    → ガウス羽化。
-
-    任意のアップロード顔写真でハミ出さず取りこぼしも少ない値に調整済み:
-    - 中央bbox: 横0.30-0.70 / 縦0.46-0.70 (顔位置のブレを許容)
-    - a*≥15, chroma≥18 (淡い唇もカバー、肌は除外)
-    - binary_opening(1) で細い突起除去 → 口角の張り出し対策
-    - erosion=1, dilation=0 で縁を 1px 均一に内側へ → 肌へのはみ出し抑制
-    - 羽化σ=1.8 (縁シャープ寄りで唇/肌境界をくっきり)
+    **唇の縦位置を自動検出**: 中央 bbox 内で a*×chroma が最大になる行を「唇中心」と
+    みなし、その上下 band_half_pct × H の狭い帯だけをマスク検出領域にする。
+    これで顔の縦位置がズレた写真でも顎影/鼻影を巻き込まない。
     """
     arr = rgb_uint8
     H, W = arr.shape[:2]
@@ -153,7 +146,20 @@ def extract_lip_mask(rgb_uint8, central_bbox=(0.30, 0.70, 0.46, 0.70),
     chroma = np.hypot(a, b); L = lab[..., 0]
     x0, x1, y0, y1 = central_bbox
     yy, xx = np.mgrid[0:H, 0:W]
-    central = (xx > W * x0) & (xx < W * x1) & (yy > H * y0) & (yy < H * y1)
+
+    # 段階1: 粗い中央 bbox 内で唇中心行を a*·chroma の行合計の argmax で検出
+    rough_band = (xx > W * x0) & (xx < W * x1)
+    rough_y = (yy > H * y0) & (yy < H * y1)
+    score = np.where(rough_band & rough_y, np.clip(a, 0, None) * chroma, 0.0)
+    row_score = score.sum(axis=1)
+    lip_y = int(np.argmax(row_score))
+
+    # 段階2: 唇中心 ± band_half_pct × H の狭い縦帯に検出領域を限定
+    band_half = max(15, int(H * band_half_pct))
+    y_top = max(int(H * y0), lip_y - band_half)
+    y_bot = min(int(H * y1), lip_y + band_half)
+    central = ((xx > W * x0) & (xx < W * x1)
+               & (yy >= y_top) & (yy <= y_bot))
     m = (a > a_min) & (chroma > chroma_min) & (L > L_min) & (L < L_max) & central
     lbl, n = ndi.label(m)
     if n == 0:
@@ -320,6 +326,9 @@ def main():
                 help="中央下に唇が写った正面写真でうまく動きます。背景がシンプルだとなお良し。")
             if uploaded is None:
                 st.caption("⬆️ ここに画像をドロップ。アップロードしない場合は他のソースを選択")
+            mask_adj = st.slider(
+                "マスク範囲 微調整 (締める ← 0 → 緩める)", -2, 2, 0, 1,
+                help="塗布領域が小さすぎる/大きすぎる時に画像ごとに調整。0=既定")
         elif source == "既定の写真":
             keys = [k for k, _ in photos]
             labels = [lab for _, lab in photos]
@@ -357,12 +366,29 @@ def main():
             st.info("⬅️ サイドバーで顔写真をアップロードしてください。")
             return
         lip_rgb = np.asarray(Image.open(uploaded).convert("RGB"))
-        lip_alpha = extract_lip_mask(lip_rgb)
+        # マスク調整スライダーで bbox/しきい値を画像ごとにチューニング
+        # +adj=緩める(範囲広め)、-adj=締める(範囲狭め)
+        adj = mask_adj
+        # +adj=帯を厚く+しきい値緩める / -adj=帯を薄く+しきい値締める
+        kwargs = {
+            "central_bbox": (
+                max(0.20, 0.32 - 0.02 * adj),   # 横方向のみ slider で伸縮
+                min(0.80, 0.68 + 0.02 * adj),
+                0.42,                            # 縦は広めに取り、内部で band 抽出
+                0.72,
+            ),
+            "a_min": max(10, 15 - adj),
+            "chroma_min": max(12, 18 - adj),
+            "L_min": max(18, 22 - adj),
+            "band_half_pct": max(0.025, 0.05 + 0.015 * adj),  # 帯の厚みを slider で
+        }
+        lip_alpha = extract_lip_mask(lip_rgb, **kwargs)
         if lip_alpha.sum() < 100:
-            st.error("唇マスクを抽出できませんでした。正面・中央下に唇が写った写真を試してください。")
+            st.error("唇マスクを抽出できませんでした。スライダーを + 側に振るか、"
+                     "正面・中央下に唇が写った写真を試してください。")
             return
         lip_lab = measure_lip_lab(lip_rgb, lip_alpha).tolist()
-        src_label = f"アップロード ({uploaded.name})"
+        src_label = f"アップロード ({uploaded.name}) / 調整={adj:+d}"
         credit = "⚠️ アップロード画像のライセンスは利用者が確認すること"
     elif photo_key == "model":
         lip_rgb, lip_alpha = _read_rgba(os.path.join(ASSETS_LIPS, "model.png"))

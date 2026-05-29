@@ -202,10 +202,12 @@ products_with_lab.csv からロード。
 - カタログ pc_season タグはあくまで「答え合わせ用」
 
 ### 6. UI 合成(`ui_app.py`、Lv2)— 詳細は DESIGN.md §6
-- **`extract_lip_mask(rgb)`**: 任意顔写真から唇 α マスクを自動抽出(色しきい値+形態学)。
-  反復調整した設定: bbox 0.30-0.70/0.46-0.70、a*≥15、C*≥18、L 24-72、closing(2)→
-  opening(1) で口角張り出し除去→erosion(1) で 1px 内側へ→σ=1.8 で羽化。
-  サイドバーの「唇マスクの輪郭を確認」(upload時 既定ON)で緑線確認可。
+- **`extract_lip_mask(rgb)`**: 任意顔写真から唇 α マスクを自動抽出。
+  **「唇中心 y を a\*·chroma 行ピークで自動検出 → ±5%H の狭い帯だけスキャン」**方式
+  (固定 bbox だと顎/鼻影を巻き込んだ反省を踏まえた根本変更)。色しきい値
+  a*≥15/C*≥18/L 22-72 + closing(2)+opening(1)+erosion(1)+σ=1.8 で整形。
+  サイドバーの「**マスク範囲 微調整**」スライダー(-2〜+2)で帯厚・横bbox・しきい値を
+  同時に画像ごとに調整可。「唇マスクの輪郭を確認」(upload時 既定ON)で緑線診断。
 - **`composite_lip(rgb, α, applied_lab, texture_strength)`**: 平均シフト+偏差保持の
   Lab 再着色(`L_new = L_applied + ts·(L_orig - L_mean_lip)`、a,b は applied 置換)→
   α でアルファ合成。質感の強さ ts は仕上げカテゴリで自動
