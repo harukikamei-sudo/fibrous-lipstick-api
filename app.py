@@ -25,11 +25,13 @@ from io import BytesIO
 from typing import Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
+import numpy as np
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, model_validator
+from skimage import color as skcolor
 
 import extract_lab as el
 import estimate_s as es  # 雛形
@@ -239,11 +241,11 @@ class RecommendItem(BaseModel):
     original_lab: LabValue = Field(..., description="商品本来の発色 Lab")
     applied_lab: LabValue = Field(..., description="唇に厚み t で塗った後の Lab")
     applied_chroma: float = Field(..., description="applied_lab の彩度 C*=√(a²+b²)。清濁の判定軸")
-    delta_e: float = Field(..., description="ソートに使った主スコア (PC 指定時=pc_score、それ以外=唇/目標色との ΔE)")
+    delta_e: float = Field(..., description="ソートに使った主スコア (PC指定時=pc_score 4D領域距離、それ以外=唇/目標色との ΔE2000)")
     pc_score: Optional[float] = Field(
-        None, description="applied_lab と PC 別 Lab+C* 領域とのユークリッド距離。指定時のみ"
+        None, description="applied_lab と PC 別 Lab+C* 領域とのユークリッド距離(4軸)。指定時のみ"
     )
-    delta_e_to_lip: float = Field(..., description="applied_lab と lip_lab の ΔE(参考)")
+    delta_e_to_lip: float = Field(..., description="applied_lab と lip_lab の ΔE2000(CIEDE2000、参考)")
     catalog_pc_tags: List[str] = Field(
         default_factory=list,
         description="カタログ pc_season タグ(参考表示。推奨ロジックには未使用)"
@@ -504,6 +506,18 @@ def _hue_deg(a: float, b: float) -> float:
     return math.degrees(math.atan2(b, a)) % 360.0
 
 
+def _delta_e_ciede2000(lab1, lab2) -> float:
+    """2 点の Lab 間の色差 ΔE(CIEDE2000)。
+
+    CIEDE2000 は明度/彩度/色相の非線形重み付けを入れた perceptually-uniform な
+    色差。ΔE76(単純ユークリッド)より人間の知覚に近く、化粧品/印刷の業界標準。
+    skimage 実装に委譲。
+    """
+    a = np.asarray(lab1, dtype=float).reshape(1, 1, 3)
+    b = np.asarray(lab2, dtype=float).reshape(1, 1, 3)
+    return float(skcolor.deltaE_ciede2000(a, b)[0, 0])
+
+
 def _hue_in_range(h: float, lo: Optional[float], hi: Optional[float]) -> bool:
     if lo is None and hi is None:
         return True
@@ -561,16 +575,14 @@ def recommend_endpoint(req: RecommendRequest):
         if req.L_max is not None and aL > req.L_max:
             continue
 
-        dE_lip = math.sqrt((aL - lip[0]) ** 2 + (aa - lip[1]) ** 2
-                           + (ab - lip[2]) ** 2)
+        dE_lip = _delta_e_ciede2000([aL, aa, ab], lip)
         if has_pc:
             pc_score = km.compute_pc_score({"L": aL, "a": aa, "b": ab},
                                            req.pc_season)
             primary = pc_score
         else:
             pc_score = None
-            primary = math.sqrt((aL - target[0]) ** 2 + (aa - target[1]) ** 2
-                                + (ab - target[2]) ** 2)
+            primary = _delta_e_ciede2000([aL, aa, ab], target)
         scored.append((primary, pc_score, dE_lip, p, (aL, aa, ab)))
 
     scored.sort(key=lambda x: x[0])

@@ -409,7 +409,9 @@ S·t のみ可観測 ⇒ t は規約固定(1度塗り=t1=0.3)               識�
 estimate_s_layered: (K/S,u1) を R1=R(u1),R2=R(2u1) からfit  S=u1/t1
 applied: L'=(1-λ)L+λL_app, a'=a_app, b'=b_app             UI 再着色
 out = α·rec + (1-α)·base                                  α 合成
-ΔE  = √(ΔL*²+Δa*²+Δb*²)                                   CIE76 色差
+ΔE2000 (CIEDE2000): 明度・彩度・色相の重み付け色差 (skcolor.deltaE_ciede2000)
+                   /recommend の delta_e / delta_e_to_lip に採用 (旧 ΔE76 から移行)
+pc_score: 4軸(L,a,b,C*) ユークリッド距離(=対矩形領域)、別物として併存
 ```
 
 ## 10. コード対応表

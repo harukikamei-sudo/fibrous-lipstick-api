@@ -233,8 +233,8 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/compute_km_table \
 | 指定 | filter_method | スコア(=delta_e) |
 |---|---|---|
 | `pc_season` あり | `pc_season_target_region` | PC Lab 領域からの距離(pc_score) |
-| `target_lab` あり | `delta_e_to_target` | applied と target の ΔE |
-| 何も指定なし | `delta_e_to_lip` | applied と lip の ΔE(=自然/唇寄り) |
+| `target_lab` あり | `delta_e_to_target` | applied と target の **ΔE2000(CIEDE2000)** |
+| 何も指定なし | `delta_e_to_lip` | applied と lip の **ΔE2000**(=自然/唇寄り) |
 
 ### 例1: 唇に近い順(最も自然)
 ```bash
