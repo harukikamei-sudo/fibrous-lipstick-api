@@ -21,7 +21,8 @@
 | `t` | 塗膜の厚み(無次元、規約で固定) | ≥0 |
 | `a` `b`(KM式内) | `a=1+K/S`, `b=√(a²-1)` | — |
 | `L*,a*,b*` | CIE Lab | — |
-| `ΔE` | CIE76 色差 | ≥0 |
+| `ΔE2000` | 色差(CIEDE2000、知覚一様。/recommend 採用) | ≥0 |
+| `pc_score` | applied と PC領域(4軸 L,a,b,C*)矩形との距離 | ≥0 |
 | 「チャネル」 | linear sRGB の R/G/B 帯域 | 3 |
 
 > 注意: KM 式の `a,b` と Lab の `a*,b*` は別物。文脈で区別する。
@@ -33,7 +34,7 @@
 唇地肌 Lab (LIP_PRESETS) ─────────────┤ K/S(商品)
 仕上げタイプ ──LINE_S_PRESETS──▶ S(ライン)  │
                                        ▼ km_reflectance / compute_applied_lab
-                            塗布後 Lab ──ΔE──▶ /recommend TOP-N ──▶ UI(実写唇に合成)
+                            塗布後 Lab ──ΔE2000 or pc_score──▶ /recommend TOP-N ──▶ UI(実写唇に合成)
 薄付きスウォッチ(任意) ──estimate_s_layered──▶ 実測 S(校正)
 ```
 
@@ -196,25 +197,32 @@ UI の選択肢に使う。
 
 ## 5. /recommend エンドポイント (`app.py`)
 
-唇色 → 全カタログ商品の塗布後色 → 目標色との ΔE で並べ替え TOP-N。
+唇色(+任意 PC・目標色・絞り込み) → 全カタログ商品の塗布後色 → スコア昇順 TOP-N。
 
 ```
-入力: lip_lab, t(=1.0), target_lab?(省略時=lip_lab=最も自然/唇寄り),
-      line_category?, hue_min/max?, L_min/max?, top_n(=5)
+入力: lip_lab, t(=1.0), pc_season?, target_lab?, line_category?,
+      hue_min/max?, L_min/max?, top_n(=5)
 処理: 各商品 p について
         ks = ks_from_lab(p.lab)
         S  = resolve_line_s(line_id, line_category)
         applied = compute_applied_lab(lip_lab, ks, S, t)
         applied の hue/L でフィルタ
-        ΔE = ‖applied - target‖   (CIE76)
-      ΔE 昇順 TOP_n
-出力: {count, sort_target, results:[{id,name,line_category,original_lab,applied_lab,delta_e}]}
+        スコア:
+          PC指定時      → pc_score = compute_pc_score(applied, pc_season)
+          target指定時  → ΔE2000(applied, target)
+          それ以外      → ΔE2000(applied, lip_lab)   (=唇寄り/自然)
+      スコア昇順 TOP_n
+出力: {count, catalog_size, filter_method, pc_season,
+       results:[{id,name,line_category,original_lab,applied_lab,applied_chroma,
+                 delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}
 ```
 - カタログは起動時に `products_with_lab.csv` からロード(status=excluded と Lab 欠損は除外)。
   本番 HF に同梱するため同 CSV を git 追跡化。
-- `ΔE(CIE76) = √(ΔL*² + Δa*² + Δb*²)`。
-- 既定の並べ替え目標 = lip_lab ⇒ **applied が唇に近い=最も自然/シアー**な順。
-  target_lab 指定でその色狙い。
+- **`ΔE2000(CIEDE2000)`**: 明度/彩度/色相を非線形に重み付けた知覚一様な色差。
+  `skimage.color.deltaE_ciede2000` を利用。ΔE76 と比べて青・高彩度域での順位が改善。
+- `pc_score`: 4軸(L,a,b,C\*) 矩形領域までのユークリッド距離。点対点の ΔE2000 とは別物
+  (領域距離なので perceptual 重みは導入せず、領域定義そのものに知覚を込めている)。
+- 既定(何も指定なし) = lip_lab を target にした ΔE2000 ⇒ **applied が唇に近い=自然な順**。
 
 ---
 
@@ -222,22 +230,60 @@ UI の選択肢に使う。
 
 「色チップ」では口紅感が出ないため、**実写の唇に塗布後の色を合成**してビジュアル化。
 
-### 6.1 唇マスク抽出(自動)
-顔ランドマーク(mediapipe)は Python 3.13 で不可 ⇒ **色しきい値法**:
-Lab で `a* > 25 ∧ chroma > 30 ∧ 中央域` → 最大連結成分 → 穴埋め(ハイライト等)→
-クロージング → **ガウス羽化して α(0-1)** に。`assets/lips/model.png`(RGBA, α=唇マスク)。
+### 6.1 唇マスク抽出(自動) `extract_lip_mask(rgb)`
+顔ランドマーク(mediapipe)は Python 3.13 で不可 ⇒ **色しきい値法 + 形態学的整形**:
 
-### 6.2 合成数理 `composite_lip(rgb, alpha, applied_lab, l_blend=0.5)`
-全画素を Lab に変換し**再着色**:
 ```
-L' = (1 - l_blend)·L + l_blend·L_applied   (元の陰影/質感を残す。既定 50:50)
-a' = a_applied ,  b' = b_applied            (色味は塗布後に置換)
+1. Lab に変換、画面中央 bbox 内に限定 (横0.30-0.70 / 縦0.46-0.70)
+2. 唇候補画素 = (a* ≥ 15) ∧ (C* ≥ 18) ∧ (24 ≤ L* ≤ 72)
+3. 最大連結成分 → binary_fill_holes(ハイライト等の穴埋め)
+4. binary_closing(2) → binary_opening(1)  ← 細い突起(口角はみ出し)除去
+5. binary_erosion(1)                       ← 縁を 1px 均一に内側へ(肌へのはみ出し抑制)
+6. gaussian_filter(σ=1.8) で羽化 → α ∈ [0,1] HxW
 ```
+
+任意のアップロード顔写真でハミ出さず取りこぼしも少ない値に**反復調整済み**。
+赤い唇/淡い唇/タイトな顔/緩い顔 いずれもそこそこ取れる中庸。UI 側に
+**「唇マスクの輪郭を確認」チェックボックス**(アップロード時は既定 ON)で
+緑線オーバーレイを表示でき、画像ごとに過/不足を一目で診断可能。
+
+`assets/lips/model.png` は古い My Red Lips 用の値で baked された α を持つが、
+新しい upload では runtime に上記パイプラインで再抽出する。
+
+### 6.2 合成数理 `composite_lip(rgb, alpha, applied_lab, texture_strength=1.0)`
+**「平均シフト + 偏差保持」方式** (ピクセル毎の L 線形ブレンドだと texture_strength
+を上げた時に唇の凹凸が均されてフラットに潰れる問題があったので変更):
+
+```
+L_mean_lip = Σ α·L_orig / Σ α       (唇マスク内の重み付き平均L)
+L_dev     = L_orig - L_mean_lip      (各画素の「平均からの偏差」=テカリ/陰)
+L_new     = L_applied + texture_strength · L_dev
+a_new     = a_applied                (色味は置換)
+b_new     = b_applied
+```
+
 再着色 RGB を `rec`、元画像を `base`、唇マスク α で**アルファ合成**:
 ```
-out = α·rec + (1-α)·base
+out = α·rec + (1 - α)·base
 ```
-⇒ 顔・周辺は元のまま、唇だけ色変え。α が羽化済みなので**縁が自然に馴染む**。
+- `texture_strength = 0` ⇒ 唇内が L_applied 一色(フラットなマット質感)
+- `texture_strength = 1` ⇒ 元写真の陰影/テカリそのまま保持(自然)
+- `texture_strength > 1` ⇒ テカリ強調(グロス感アップ)
+
+**仕上げカテゴリで自動設定** (`TEXTURE_BY_CATEGORY`):
+gloss=1.5 / tint=1.0 / velvet=0.9 / matte=0.75 / other=1.0。
+→ 各 TOP-N カードが「その商品の仕上げに合った質感」で自動描画。
+
+### 6.3 UI コントロール (`ui_app.py` サイドバー)
+- **唇画像のソース**: アップロード / 既定の写真 / ダミー生成。任意の顔写真ドロップで
+  即マスク抽出+下地 Lab 実測 → /recommend へ。
+- **塗り重ね回数**(`COAT_OPTIONS`): 1度塗り(t=0.3) / 2度塗り(0.6) / 3度塗り(0.9) /
+  しっかり塗り(1.5)。化粧の用語で直感的、規約 t1=0.3 に整合。
+- **パーソナルカラー**: 4PC + 指定なし → /recommend の pc_season。
+- **仕上げで絞り込み**: line_category フィルタ。
+- **目標色**: 任意の Lab を target_lab に。
+- 結果カード: TOP-N が顔写真合成として並ぶ。各カードに「🔍 拡大」ボタンで
+  **Before / After 並列モーダル**(`@st.dialog`) → pc_score / catalog_pc_tags / Lab 全部表示。
 
 ### 6.3 画像のロードと差し替え
 `load_lip_image(preset)` 優先順位: `lip_<preset>.png`(個別) > `model.png`(共用) >
@@ -391,10 +437,14 @@ interpretation: ≥0.7 good / ≥0.5 acceptable / <0.5 poor
 - **S/t ゲージ**: 絶対 S は t1 規約依存。t∈[0,1] と S 実測値の整合上、UI の「フル塗り」を
   t=1 ではなく数塗り相当に割り当てる**塗り重ね→t マッピング(規約3)**の確定が未了。
 - **velvet/matte/gloss は推論値**(tint のみ実測)。良い 1度/2度 画像が来れば上書き。
-- **mediapipe 不可**(Py3.13) → 唇マスクは色しきい値依存。赤くない唇/別構図では
-  閾値調整が要る(将来 face landmark or 手動マスク併用)。
-- **推薦は ΔE のみ**。似合い度(パーソナルカラー、明度コントラスト等)の評価軸は未実装。
+- **mediapipe 不可**(Py3.13) → 唇マスクは色しきい値依存。任意の顔写真に対しては
+  形態学(opening+erosion)で多少ロバスト化したが、赤くない唇/側面顔/低照明では
+  限界あり(将来 face landmark or 手動マスクスライダー併用)。
+- **推薦の評価軸はまだ色差ベース中心**(ΔE2000 / PC領域距離)。質感・パーソナルカラー
+  以外の似合い度(肌・髪との調和、明度コントラスト等)は未実装。
 - linear sRGB を反射率近似とする MVP 近似(厳密な分光反射率ではない)。
+- カタログ pc_season タグの一部商品(11/145, 約 8%)が未付与 → /evaluate では
+  バックフィルで分母から除外(`n_empty_tag_skipped` で可視化)。
 
 ---
 
@@ -428,5 +478,9 @@ pc_score: 4軸(L,a,b,C*) ユークリッド距離(=対矩形領域)、別物と�
 | プリセット/分類 | `km.LINE_S_PRESETS / classify_line_category / resolve_line_s / LIP_PRESETS` |
 | 推薦 | `app.recommend_endpoint`(+ `_load_catalog`) |
 | 校正CLI | `sample_lab.py`(領域→Lab→estimate_s_layered) |
-| UI 合成 | `ui_app.composite_lip / load_lip_image` |
+| UI 合成 | `ui_app.composite_lip / load_lip_image / extract_lip_mask / measure_lip_lab` |
+| UI モーダル | `ui_app.show_zoom_dialog`(@st.dialog) |
+| 質感プリセット | `ui_app.TEXTURE_BY_CATEGORY` (matte 0.75 / velvet 0.9 / tint 1.0 / gloss 1.5) |
+| 塗り重ね | `ui_app.COAT_OPTIONS` (1度=0.3 / 2度=0.6 / 3度=0.9 / しっかり=1.5) |
+| 色差 (ΔE2000) | `app._delta_e_ciede2000` (skimage.color.deltaE_ciede2000 委譲) |
 | テスト | `test_km.py`(性質1〜8) / `test_lab_utils.py` / `test_dark_swatch.py` |

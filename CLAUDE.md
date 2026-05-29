@@ -169,8 +169,11 @@ products.csv / products_with_lab.csv の line_category 列、resolve_line_s、/r
 hue_min/max?, L_min/max?, top_n=5}` → `{count, catalog_size, filter_method,
 pc_season, sort_target, results:[{id,name,line_category,original_lab,applied_lab,
 delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
-ソートキー: `pc_season` 指定 → **pc_score**(論文ベース)、target_lab 指定 → ΔE_to_target、
-それ以外 → ΔE_to_lip(唇に近い=自然)。カタログは起動時に products_with_lab.csv からロード。
+ソートキー: `pc_season` 指定 → **pc_score**(論文ベース 4軸領域距離)、target_lab 指定
+→ **ΔE2000**(applied vs target)、それ以外 → **ΔE2000**(applied vs lip = 唇に近い/自然)。
+点対点の色差は ΔE76 → **CIEDE2000 へ移行済**(知覚一様、業界標準)。pc_score は
+領域距離なので別物として Euclidean のまま据置。カタログは起動時に
+products_with_lab.csv からロード。
 
 **★PC(パーソナルカラー)連携 — 採用方針(2-a 論文ベース Lab 領域)**
 - カタログの `pc_season` タグは**ロジックに使わない**(=「答え」を使わない)。
@@ -194,6 +197,23 @@ delta_e, pc_score?, delta_e_to_lip, catalog_pc_tags}]}`。
 - Kawano: 写真 → 唇 Lab + PC 判定(写真ベースの判定担当)
 - Haruki: 唇 Lab + PC を入力に、論文ベース推奨ロジックを構築(本実装)
 - カタログ pc_season タグはあくまで「答え合わせ用」
+
+### 6. UI 合成(`ui_app.py`、Lv2)— 詳細は DESIGN.md §6
+- **`extract_lip_mask(rgb)`**: 任意顔写真から唇 α マスクを自動抽出(色しきい値+形態学)。
+  反復調整した設定: bbox 0.30-0.70/0.46-0.70、a*≥15、C*≥18、L 24-72、closing(2)→
+  opening(1) で口角張り出し除去→erosion(1) で 1px 内側へ→σ=1.8 で羽化。
+  サイドバーの「唇マスクの輪郭を確認」(upload時 既定ON)で緑線確認可。
+- **`composite_lip(rgb, α, applied_lab, texture_strength)`**: 平均シフト+偏差保持の
+  Lab 再着色(`L_new = L_applied + ts·(L_orig - L_mean_lip)`、a,b は applied 置換)→
+  α でアルファ合成。質感の強さ ts は仕上げカテゴリで自動
+  (`TEXTURE_BY_CATEGORY`: matte 0.75 / velvet 0.9 / tint 1.0 / gloss 1.5)。
+- **`COAT_OPTIONS`**: 塗り厚 t を化粧用語化したラジオボタン(1度=0.3 / 2度=0.6 /
+  3度=0.9 / しっかり=1.5)。規約 t1=0.3 と整合。
+- **拡大モーダル**(`@st.dialog show_zoom_dialog`): TOP-N カード「🔍 拡大」で
+  Before/After 並列+Lab+チップ+(PC指定時 pc_score/タグ)表示。
+- **写真ソース**: アップロード(任意顔写真)/既定 model.png/ダミー楕円 の3モード。
+  アップロード時は **measure_lip_lab** で唇 Lab を実測 → /recommend の lip_lab に直接渡す
+  (=計算と表示の一致、option B)。
 - **物理的限界(重要)**: K/S が大きい暗・高彩度チャネルは薄付きでも完全不透明
   (R が R∞ に張り付く)になり、S が観測色に反映されず逆算不能。これは情報損失
   でありバグではない。test_km.py は「自己整合性(全ch)＋感度chのS復元」で検証。

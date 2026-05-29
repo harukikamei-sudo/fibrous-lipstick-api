@@ -236,6 +236,9 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/compute_km_table \
 | `target_lab` あり | `delta_e_to_target` | applied と target の **ΔE2000(CIEDE2000)** |
 | 何も指定なし | `delta_e_to_lip` | applied と lip の **ΔE2000**(=自然/唇寄り) |
 
+※ ΔE2000(CIEDE2000) は明度/彩度/色相を非線形に重み付けた知覚一様な色差(化粧品/印刷の業界標準)。
+旧 ΔE76(単純ユークリッド)から移行済み。`pc_score` は領域距離なのでユークリッドのまま据置。
+
 ### 例1: 唇に近い順(最も自然)
 ```bash
 curl -X POST https://tamable-fibrous-lipstick-api.hf.space/recommend \
