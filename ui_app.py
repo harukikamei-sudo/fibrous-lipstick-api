@@ -130,15 +130,21 @@ def _dummy_lip(preset_name, w=400, h=300):
     return rgb_s.astype(np.uint8), al
 
 
-def extract_lip_mask(rgb_uint8, central_bbox=(0.34, 0.66, 0.49, 0.67),
-                     a_min=18, chroma_min=22, L_min=25, L_max=70,
-                     erosion=1, sigma=2.4):
+def extract_lip_mask(rgb_uint8, central_bbox=(0.30, 0.70, 0.46, 0.70),
+                     a_min=15, chroma_min=18, L_min=24, L_max=72,
+                     erosion=1, dilation=0, sigma=1.8):
     """RGB 画像から唇の羽化αマスク(0-1 float, HxW)を自動抽出。
 
-    顔の正面ポートレート(背景わずか、唇が画面中央下あたり)を想定。
-    Lab の彩度しきい値で唇候補画素を抽出 → 中央領域に限定 → 最大連結成分
-    → 穴埋め → 縁を少し縮める → ガウス羽化。default 値は assets/lips/model.png
-    の構築に使ったものと同じ(再現性のため)。
+    顔の正面ポートレート(唇が画面中央下あたり)を想定。Lab の彩度しきい値で
+    唇候補画素を抽出 → 中央領域に限定 → 最大連結成分 → 穴埋め → クロージング
+    → ガウス羽化。
+
+    任意のアップロード顔写真でハミ出さず取りこぼしも少ない値に調整済み:
+    - 中央bbox: 横0.30-0.70 / 縦0.46-0.70 (顔位置のブレを許容)
+    - a*≥15, chroma≥18 (淡い唇もカバー、肌は除外)
+    - binary_opening(1) で細い突起除去 → 口角の張り出し対策
+    - erosion=1, dilation=0 で縁を 1px 均一に内側へ → 肌へのはみ出し抑制
+    - 羽化σ=1.8 (縁シャープ寄りで唇/肌境界をくっきり)
     """
     arr = rgb_uint8
     H, W = arr.shape[:2]
@@ -156,8 +162,12 @@ def extract_lip_mask(rgb_uint8, central_bbox=(0.34, 0.66, 0.49, 0.67),
     m = lbl == (np.argmax(sz) + 1)
     m = ndi.binary_fill_holes(m)
     m = ndi.binary_closing(m, iterations=2)
+    # 細い突起(縁から数px だけはみ出した肌や口角)を除去。主形は維持される。
+    m = ndi.binary_opening(m, iterations=1)
     if erosion > 0:
         m = ndi.binary_erosion(m, iterations=erosion)
+    if dilation > 0:
+        m = ndi.binary_dilation(m, iterations=dilation)
     alpha = np.clip(ndi.gaussian_filter(m.astype(float), sigma=sigma), 0, 1)
     return alpha
 
@@ -373,8 +383,18 @@ def main():
 
     with st.sidebar:
         st.image(lip_rgb, caption=f"唇画像: {src_label}", use_container_width=True)
+        # 唇マスクの輪郭を画面で確認できるようにオーバーレイ表示
+        # (取りこぼし/はみ出しの診断用。アップロード時は特に重要)
+        show_mask = st.checkbox("唇マスクの輪郭を確認", value=(source == "アップロード"),
+                                help="塗布領域のフチを緑線で重ねる。塗り残しやはみ出しのチェック用")
+        if show_mask:
+            ov = lip_rgb.copy()
+            mb = (lip_alpha > 0.5)
+            edge = mb ^ ndi.binary_erosion(mb, iterations=2)
+            ov[edge] = [0, 255, 0]
+            st.image(ov, caption="マスク輪郭(緑線)", use_container_width=True)
         st.markdown(
-            "**下地 Lab(写真から実測)**" if photo_key
+            "**下地 Lab(写真から実測)**" if (source == "アップロード" or photo_key)
             else "**下地 Lab(プリセット)**", unsafe_allow_html=True)
         st.markdown(
             chip(lip_lab, f"L={lip_lab[0]:.1f} a={lip_lab[1]:.1f} b={lip_lab[2]:.1f}"),
