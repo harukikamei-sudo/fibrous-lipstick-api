@@ -167,9 +167,10 @@ def extract_lip_mask(rgb_uint8, central_bbox=(0.32, 0.68, 0.48, 0.66),
     sz = ndi.sum(np.ones_like(lbl), lbl, range(1, n + 1))
     m = lbl == (np.argmax(sz) + 1)
     m = ndi.binary_fill_holes(m)
-    m = ndi.binary_closing(m, iterations=2)
-    # 細い突起(縁から数px だけはみ出した肌や口角)を除去。主形は維持される。
-    m = ndi.binary_opening(m, iterations=1)
+    # 8連結(3x3 square)の構造要素+反復増で輪郭ギザギザを平滑化
+    struct8 = ndi.generate_binary_structure(2, 2)
+    m = ndi.binary_closing(m, structure=struct8, iterations=3)
+    m = ndi.binary_opening(m, structure=struct8, iterations=2)
     if erosion > 0:
         m = ndi.binary_erosion(m, iterations=erosion)
     if dilation > 0:

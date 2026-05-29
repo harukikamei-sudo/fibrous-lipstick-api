@@ -240,10 +240,11 @@ UI の選択肢に使う。
    = 唇本体の縦位置 (顎影や鼻影の位置に依らず、画像ごとに動的決定)
 3. 唇中心 ±band_half_pct·H (既定 ±5%) の狭い縦帯にマスク検出領域を限定
 4. しきい値: (a* ≥ 15) ∧ (C* ≥ 18) ∧ (22 ≤ L* ≤ 72)
-5. 最大連結成分 → binary_fill_holes → binary_closing(2) → binary_opening(1)
-   (口角の張り出しを除去)
-6. binary_erosion(1) で 1px 均一に内側へ
-7. gaussian_filter(σ=1.8) で羽化 → α ∈ [0,1]
+5. 最大連結成分 → binary_fill_holes
+6. **8 連結(3x3 square)構造要素**で closing(3 反復) → opening(2 反復)
+   (ピクセル単位のギザギザを平滑化、口角の張り出しも除去)
+7. binary_erosion(1) で 1px 均一に内側へ
+8. gaussian_filter(σ=1.8) で羽化 → α ∈ [0,1]
 ```
 
 **自動唇中心検出が肝**: 固定 bbox 方式だと「顎まで広がる(下バウンドが画像によって

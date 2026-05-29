@@ -205,7 +205,7 @@ products_with_lab.csv からロード。
 - **`extract_lip_mask(rgb)`**: 任意顔写真から唇 α マスクを自動抽出。
   **「唇中心 y を a\*·chroma 行ピークで自動検出 → ±5%H の狭い帯だけスキャン」**方式
   (固定 bbox だと顎/鼻影を巻き込んだ反省を踏まえた根本変更)。色しきい値
-  a*≥15/C*≥18/L 22-72 + closing(2)+opening(1)+erosion(1)+σ=1.8 で整形。
+  a*≥15/C*≥18/L 22-72 + **8連結 closing(3)/opening(2)** で輪郭平滑+erosion(1)+σ=1.8 羽化。
   サイドバーの「**マスク範囲 微調整**」スライダー(-2〜+2)で帯厚・横bbox・しきい値を
   同時に画像ごとに調整可。「唇マスクの輪郭を確認」(upload時 既定ON)で緑線診断。
 - **`composite_lip(rgb, α, applied_lab, texture_strength)`**: 平均シフト+偏差保持の
