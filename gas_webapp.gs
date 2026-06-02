@@ -72,10 +72,12 @@ const O = {
 // ============ ルーティング ============
 
 function doGet(e) {
+  e = e || {};
   return handle(e, e.parameter || {});
 }
 
 function doPost(e) {
+  e = e || {};
   var body = {};
   try {
     body = JSON.parse(e.postData.contents);
@@ -246,4 +248,44 @@ function num(v) {
   if (v === undefined || v === null || v === "") return "";
   var n = Number(v);
   return isNaN(n) ? "" : n;
+}
+
+
+// ============ エディタからの動作確認用(「実行」ボタンで安全に試せる) ============
+// ↑の doGet を直接「実行」すると e=undefined で落ちるので、代わりにこれらを使う。
+// 関数を選んで「実行」→ 実行ログ(Ctrl+Enter)で結果を確認。
+
+/** save → load の往復テスト。ダミーユーザーを書いて読み戻す。 */
+function TEST_saveAndLoad() {
+  var dummy = {
+    user_id: "TEST_USER_001",
+    lip_lab: { L: 62, a: 22, b: 12 },
+    pc_season: "ブルベ夏",
+    theta_color: { mu: { L: 50, a: 40, b: 20 }, var: { L: 1, a: 1, b: 1 } },
+    theta_pref: { mu: new Array(20).fill(0.5), var: new Array(20).fill(1) },
+    theta_explore: { mu: 0.5, var: 0.25 },
+    theta_thickness: { mu: 0.5, var: 0.1 },
+  };
+  var saveRes = saveUser(dummy);
+  Logger.log("save: " + JSON.stringify(saveRes));
+  var loaded = loadUser("TEST_USER_001");
+  Logger.log("load: " + JSON.stringify(loaded));
+}
+
+/** observe テスト。ダミー観測を1件追記する。 */
+function TEST_observe() {
+  var res = saveObservation({
+    user_id: "TEST_USER_001",
+    source: "ar_view_like",
+    product_id: "rmd_blur_fudge_03",
+    observed_lab: { L: 46, a: 42, b: 21 },
+    thickness: 0.9,
+    y: 1.0,
+  });
+  Logger.log("observe: " + JSON.stringify(res));
+}
+
+/** ヘルスチェック相当。 */
+function TEST_health() {
+  Logger.log(JSON.stringify(handle({}, { action: "health" }).getContent()));
 }
