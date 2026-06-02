@@ -3,10 +3,34 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-05-29 (Opus 4.7 / 1M context) — **設計書 v1.3 完全実装 + 検証 + CI**
-最新 commit (origin & hf 同期済み): `4bde916` (image_url + endpoint tests + CI + real-lip compositing)
+最終更新: 2026-06-02 (Opus 4.7 / 1M context) — **DB 連携 + Kawano AR フロント疎通確認**
 全テスト: 32 件合格(bayesian 8, recommend_v2 7, v13_endpoints 11, v13_flow E2E 6)
 CI: GitHub Actions で Python 3.11/3.12 を自動回転
+
+## 2026-06-02 セッションの追加(DB 連携)
+
+Kawano さんから AR フロント `color-capture`(Next.js + MediaPipe)を受領、本番 API と
+全4エンドポイント疎通確認済み。DB は `lipstick_DB_updated.xlsx`(Spreadsheet+GAS 方針)で確定。
+
+- **x_20 を DB の20軸定義に統一**(`catalog_x20.py`): hue/saturation/brightness/pigmentation
+  + lines由来11軸(glossy〜transfer_resistance)+ 世界観5(girly/makeup_intensity/konare/
+  sweetness/korean)。DB の users θ_pref 列順が source of truth
+- **`DB_V13_COLUMNS.md`**: DB に追加すべき v1.3 列の手順(users に lip_L/a/b・mu_thickness・
+  sigma2_thickness、observations に thickness・observed_lab_*・y・viewed_seconds)
+- **`gas_webapp.gs`**: GAS Web App。?action=load/save/observe で users/observations 読み書き。
+  lip API の UserState と 1:1 対応。Kawano の userStateStore.ts を差し替えるだけで繋がる
+- **`sync_db_products.py` → `db_products_filled.csv`**: DB products シートに貼る Lab+9軸 CSV(140件)
+
+### 残: Friday 手動作業
+1. DB users に5列・observations に6列追加(DB_V13_COLUMNS.md 手順)
+2. db_products_filled.csv を products シートに貼り付け
+3. gas_webapp.gs を Apps Script デプロイ → URL を Kawano に渡す
+### 残: Kawano
+- userStateStore.ts を localStorage → GAS版に差し替え
+### 既知: パッケージ色 誤抽出(Friday が DB から手動削除)
+- zero_velvet_02(aspect=4.76, container=True)が最有力削除候補。他は暗色だが正当の可能性
+
+---
 
 ---
 

@@ -91,7 +91,13 @@ fibrous-lipstick-api/
 ├── .github/workflows/test.yml ★CI(push/PR で Python 3.11/3.12 × 6 テスト群)
 ├── KAWANO_INTERFACE.md ★Kawanoさん向け API spec(議論ポイント7項目、curl 例)
 ├── KAWANO_HANDOFF.md   ★Kawanoさん相談用(役割分担・フロー図・1ページ概要)
-└── SIMULATOR_GUIDE.md  ★personas_cli.py の取説 + 数式 + 検証ハイポセシス
+├── SIMULATOR_GUIDE.md  ★personas_cli.py の取説 + 数式 + 検証ハイポセシス
+│
+├── ─── DB 連携(2026-06-02、Spreadsheet+GAS)───
+├── gas_webapp.gs       ★GAS Web App。users/observations 読み書き(?action=load/save/observe)
+├── DB_V13_COLUMNS.md   ★DB に追加する v1.3 列の手順(users 5列 + observations 6列)
+├── sync_db_products.py ★products_with_lab.csv → DB products 形式 CSV 生成
+└── db_products_filled.csv  DB products シートに貼る Lab+9軸(140件、生成物)
 ```
 
 ## 重要な設計判断

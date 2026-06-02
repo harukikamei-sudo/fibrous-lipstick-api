@@ -33,9 +33,20 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, model_validator
 from skimage import color as skcolor
 
-import extract_lab as el
-import estimate_s as es  # 雛形
-import km  # 雛形
+# extract_lab は sklearn(→ scipy.stats / scipy.sparse.csgraph)を import するため
+# 起動が重い。/extract_lab[_batch] でしか使わないので遅延 import にして、
+# v13 系エンドポイント(extract_lab 不要)の起動を軽くする。
+def _el():
+    import extract_lab as el  # noqa: PLC0415 (intentional lazy import)
+    return el
+
+import km  # 雛形(numpy のみ、軽量)
+
+
+# estimate_s は scipy.optimize を import する。/estimate_s でしか使わないので遅延。
+def _es():
+    import estimate_s as es  # noqa: PLC0415 (intentional lazy import)
+    return es
 
 # ---- 設計書 v1.3 拡張 ----
 import bayesian
@@ -410,7 +421,7 @@ def _fetch_image(url: str) -> Image.Image:
 
 
 def _result_to_response(res: dict) -> ExtractLabResponse:
-    status = el.classify_status(res)
+    status = _el().classify_status(res)
     lab = None
     if res.get("L") is not None:
         lab = LabValue(L=res["L"], a=res["a"], b=res["b"])
@@ -448,6 +459,7 @@ def health():
 
 @app.post("/extract_lab", response_model=ExtractLabResponse)
 def extract_lab_endpoint(req: ExtractLabRequest):
+    el = _el()
     img = _fetch_image(req.image_url)
     res = el.extract_lab(img)
     return _result_to_response(res)
@@ -455,6 +467,7 @@ def extract_lab_endpoint(req: ExtractLabRequest):
 
 @app.post("/extract_lab_batch", response_model=ExtractLabBatchResponse)
 def extract_lab_batch_endpoint(req: ExtractLabBatchRequest):
+    el = _el()
     results = []
     for p in req.products:
         try:
@@ -497,7 +510,7 @@ def estimate_s_endpoint(req: EstimateSRequest):
         if req.substrate_lab is not None
         else None
     )
-    s = es.estimate_s(full, light, t_light=req.t_light, substrate_lab=substrate)
+    s = _es().estimate_s(full, light, t_light=req.t_light, substrate_lab=substrate)
     k_s = km.ks_from_lab(full)
     return EstimateSResponse(s=s.tolist(), k_s=k_s.tolist())
 
