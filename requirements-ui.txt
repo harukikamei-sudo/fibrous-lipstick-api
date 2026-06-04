@@ -5,3 +5,8 @@ requests>=2.32
 numpy>=1.26
 pillow>=10.0
 scikit-image>=0.22
+
+# personas_cli.py の `plot` コマンド(ベイズ更新の統計的可視化)用。
+# japanize-matplotlib は任意(無くても英語ラベルで bayes_report.png は出力される)。
+matplotlib>=3.7
+japanize-matplotlib>=1.1; python_version < "3.13"

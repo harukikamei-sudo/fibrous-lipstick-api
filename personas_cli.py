@@ -69,13 +69,23 @@ class Persona:
         return p
 
 
+# ペルソナフィルタは products_with_lab.csv の「実在する」x20 カラムで定義する。
+# DB 20軸の実カラムは x20_00_hue 〜 x20_19_korean(catalog_x20.AXIS_NAMES 準拠)。
+# 旧版は x20_11_warm_tone / x20_18_korean / x20_02_transparency 等の
+# 存在しないカラムを参照しており matching_products が空になっていた(修正済み)。
+
+def _x(r: Dict, col: str) -> float:
+    """x20 カラムを安全に float 取得(欠損は 0.0)。"""
+    return float(r.get(col) or 0.0)
+
+
 PERSONAS = [
     Persona(
         "mina", 0.9,
         lambda r: (
             r["line_category"] == "tint"
-            and float(r.get("x20_18_korean", 0)) > 0.3
-            and float(r.get("x20_11_warm_tone", 0)) > 0.5
+            and _x(r, "x20_01_saturation") > 0.4   # 鮮やか
+            and _x(r, "x20_19_korean") > 0.05       # 韓国っぽい(MLBB)
         ),
         "高1・濃いめ暖色 韓国っぽい派",
     ),
@@ -83,8 +93,8 @@ PERSONAS = [
         "aya", 0.2,
         lambda r: (
             r["line_category"] in ("gloss", "tint")
-            and float(r.get("x20_02_transparency", 0)) > 0.4
-            and float(r.get("x20_12_light_color", 0)) > 0.4
+            and _x(r, "x20_06_sheer") > 0.4          # 透け感
+            and _x(r, "x20_02_brightness") > 0.5     # 明るい
         ),
         "OL・薄めヌード ナチュラル派",
     ),
@@ -92,8 +102,8 @@ PERSONAS = [
         "yuki", 0.95,
         lambda r: (
             r["line_category"] in ("matte", "velvet")
-            and float(r.get("x20_13_deep_color", 0)) > 0.3
-            and float(r.get("x20_19_mature", 0)) > 0.2
+            and _x(r, "x20_02_brightness") < 0.45    # 深い(暗い)
+            and _x(r, "x20_07_velvet") > 0.25        # ベルベット感
         ),
         "大学生・マット深色 マチュア派",
     ),
@@ -426,6 +436,61 @@ def _short(pid: str) -> str:
     return pid.replace("rmd_", "")[:18]
 
 
+# ============ plot: ベイズ更新の統計的可視化 ============
+
+def cmd_plot(n: int = 15) -> None:
+    """各ペルソナに N 観測を逐次適用し、bayes_report.png を出力する。
+
+    可視化は AR like で動く θ_thickness / θ_color に限定(θ_pref/θ_explore は不変)。
+    計算は bayes_plot(bayesian/pair_compare 直叩き、API 不使用)で行う。
+    """
+    try:
+        import bayes_plot
+    except Exception as e:
+        print(f"{RED}❌ bayes_plot の読み込み失敗: {e}{RESET}")
+        return
+
+    specs = bayes_plot.specs_from_personas(PERSONAS)
+    if not specs:
+        print(f"{RED}❌ matching_products が空。ペルソナフィルタを確認してください。{RESET}")
+        return
+
+    print(GRAY + f"📈 各ペルソナに {n} 観測を逐次適用して図を生成中…" + RESET)
+    print(GRAY + "   (初回は matplotlib の読み込みに時間がかかる場合あり)" + RESET)
+    try:
+        out1, report1 = bayes_plot.generate_report(specs, n=n, out_path="bayes_report.png")
+        # 図2: 収束速度(N をスイープ。最低でも 30 まで伸ばして収束を見せる)
+        n_max = max(n, 30)
+        out2, report2 = bayes_plot.generate_convergence_report(
+            specs, n_max=n_max, out_path="bayes_convergence.png")
+    except ImportError:
+        print(f"{RED}❌ matplotlib が無い。`.venv/bin/pip install -r requirements-ui.txt`{RESET}")
+        return
+    except Exception as e:
+        print(f"{RED}❌ 図生成エラー: {e}{RESET}")
+        return
+
+    # テキストレポート(色なしを色付けして表示)
+    def _print_report(lines):
+        for line in lines:
+            if line.startswith("[") or line.startswith("==="):
+                print(f"{BOLD}{line}{RESET}")
+            elif "✓" in line:
+                print(f"{GREEN}{line}{RESET}")
+            elif "✗" in line:
+                print(f"{RED}{line}{RESET}")
+            else:
+                print(line)
+
+    print()
+    _print_report(report1)
+    print()
+    _print_report(report2)
+    print(f"\n{GREEN}✅ 図1(統計ビュー)を保存: {BOLD}{out1}{RESET}")
+    print(f"{GREEN}✅ 図2(収束速度)を保存: {BOLD}{out2}{RESET}{GREEN} "
+          f"(open bayes_report.png bayes_convergence.png){RESET}")
+
+
 # ============ ヘルプ ============
 
 INTRO = f"""
@@ -458,6 +523,8 @@ HELP = f"""
   {BOLD}top{RESET}  [{DIM}<件数>{RESET}]    各ペルソナの TOP-N を横並び表示 (省略=3)
   {BOLD}state{RESET}            θ パラメータ(μ・σ²)の現状を横並び
   {BOLD}formula{RESET}          直近のベイズ計算を式 + 値 + 一致確認 で表示
+  {BOLD}plot{RESET} [{DIM}<観測数>{RESET}]   N 観測を適用しベイズ更新を統計的に可視化 → bayes_report.png
+                  (省略=15。θ_thickness/θ_color の収束・信用楕円・情報利得[bit])
   {BOLD}diff{RESET}             初期 TOP-5 と現在 TOP-5 の差分(順位変動)
   {BOLD}obs{RESET}              各ペルソナの観測履歴
   {BOLD}reset{RESET}            3 人とも初期状態に戻す
@@ -522,6 +589,18 @@ def repl() -> None:
                     continue
                 n = max(1, min(10, n))
             print_top_table(n)
+        elif verb == "plot":
+            n = 15
+            if len(parts) > 1:
+                try:
+                    n = int(parts[1])
+                except ValueError:
+                    print(f"{RED}❌ '{parts[1]}' は半角整数で。例: {BOLD}plot 20{RESET}")
+                    continue
+                if n < 1 or n > 100:
+                    print(f"{RED}❌ 観測数は 1〜100 の範囲で{RESET}")
+                    continue
+            cmd_plot(n)
         elif verb == "state":
             print_state_table()
         elif verb == "formula":
