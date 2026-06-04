@@ -22,3 +22,7 @@ assets/lips/*.png
 assets/lips/*.jpg
 assets/lips/*.jpeg
 assets/lips/*.webp
+
+# 試着デモは独立した HF Space リポジトリ(hf_streamlit_space/.git)。
+# 親リポでは追跡せず、URL と手順を CLAUDE.md / HANDOFF.md に記録する。
+hf_streamlit_space/

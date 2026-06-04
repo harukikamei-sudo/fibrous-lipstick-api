@@ -25,9 +25,16 @@ CIE Lab を返す公開 API。
 |---|---|
 | 公開 API | <https://tamable-fibrous-lipstick-api.hf.space> |
 | Swagger UI | <https://tamable-fibrous-lipstick-api.hf.space/docs> |
-| HF Space 管理 | <https://huggingface.co/spaces/Tamable/fibrous-lipstick-api> |
+| HF Space 管理 (API) | <https://huggingface.co/spaces/Tamable/fibrous-lipstick-api> |
+| **試着デモ (Streamlit)** | **<https://tamable-fibrous-lipstick-tryon.hf.space>** |
+| HF Space 管理 (デモ) | <https://huggingface.co/spaces/Tamable/fibrous-lipstick-tryon> |
 | GitHub | <https://github.com/harukikamei-sudo/fibrous-lipstick-api> |
 | ローカル | `~/Desktop/fibrous-lipstick-api/` |
+
+> **試着デモ**(口紅を顔写真に合成する Streamlit UI)は 2026-06-04 に HF Spaces へ公開。
+> ローカルで `streamlit run` する必要はもう無い。上記 URL をブラウザで開くだけ。
+> デモのソースは `hf_streamlit_space/`(API の Space とは別 Space)。
+> 更新手順は `hf_streamlit_space/DEPLOY.md` 参照(`sync_demo.sh` でワンコマンド同期)。
 
 git remote: `origin` = GitHub (HTTPS), `hf` = HF Spaces (HTTPS)
 ローカル git config: `harukikbb8-max <harukikbb8@gmail.com>` (個人 GitHub)

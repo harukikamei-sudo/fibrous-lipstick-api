@@ -21,14 +21,22 @@ Kawano さんから AR フロント `color-capture`(Next.js + MediaPipe)を受�
   lip API の UserState と 1:1 対応。Kawano の userStateStore.ts を差し替えるだけで繋がる
 - **`sync_db_products.py` → `db_products_filled.csv`**: DB products シートに貼る Lab+9軸 CSV(140件)
 
-### 残: Friday 手動作業
-1. DB users に5列・observations に6列追加(DB_V13_COLUMNS.md 手順)
-2. db_products_filled.csv を products シートに貼り付け
-3. gas_webapp.gs を Apps Script デプロイ → URL を Kawano に渡す
-### 残: Kawano
-- userStateStore.ts を localStorage → GAS版に差し替え
-### 既知: パッケージ色 誤抽出(Friday が DB から手動削除)
-- zero_velvet_02(aspect=4.76, container=True)が最有力削除候補。他は暗色だが正当の可能性
+### ✅ DB 構築 完了(2026-06-02、最新ファイル `~/Downloads/lpis_DB.xlsx`)
+- users に5列追加済(BF-BJ: lip_L/a/b, mu_thickness, sigma2_thickness)
+- observations に6列追加済(thickness, observed_lab_L/a/b, y, viewed_seconds)
+- products に Lab 流し込み済(140行すべて Lab 入り)
+- GAS デプロイ済 → `TEST_saveAndLoad` で users への save/load 成功確認
+  (lip_lab/theta_thickness/20次元θ_pref が正しく往復)
+- ⚠️ 軽微: 一部列名に余分な空白/記号(`'lip_L '`, `'viewed_seconds │'`等)。
+  GAS は列番号で読み書きするので動作影響なし。気になれば Sheets で掃除(任意)
+
+### 残タスク
+1. (任意)`TEST_observe` 実行で observations 書き込みも目視確認
+2. (任意)zero_velvet_02 削除(aspect=4.76, container=True=パッケージ色)
+3. **GAS Web App URL を取得 → 外部 curl 疎通テスト**(エディタ内 TEST は通過済、
+   残るは外部HTTPアクセス確認のみ)
+4. **DB の件を Kawano に共有**(Friday のタイミング。まだ未連絡)
+5. Kawano: userStateStore.ts を localStorage → GAS版(?action=load/save/observe)に差し替え
 
 ---
 
@@ -234,7 +242,12 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/evaluate \
 # 公開 Swagger UI
 # https://tamable-fibrous-lipstick-api.hf.space/docs
 
-# ローカル UI 起動
+# ★試着デモ(口紅を顔写真に合成)は HF Spaces に公開済(2026-06-04)
+# → https://tamable-fibrous-lipstick-tryon.hf.space  (ブラウザで開くだけ。ローカル起動不要)
+#   ソース: hf_streamlit_space/(独立 HF Space リポジトリ)
+#   更新: bash hf_streamlit_space/sync_demo.sh
+
+# ローカルで動かしたい場合のみ(macOS の初回ライブラリ検証で起動が遅いことあり)
 cd ~/Desktop/fibrous-lipstick-api
 .venv/bin/streamlit run ui_app.py
 # → http://localhost:8501
