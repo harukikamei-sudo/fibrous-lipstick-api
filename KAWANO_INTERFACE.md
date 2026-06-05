@@ -229,7 +229,8 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
       "f_score": -8.73,
       "familiarity": 0.080,
       "r_final": -8.93,
-      "catalog_pc_tags": ["イエベ秋","ブルベ夏"]
+      "catalog_pc_tags": ["イエベ秋","ブルベ夏"],
+      "is_serendipity": true
     },
     ...
   ]
@@ -242,6 +243,12 @@ caller はこの 4 つに `user_id` / `lip_lab` / `pc_season` を足して `User
 学習が進んで TOP-N の `effective_lab` も追従して動きます。
 
 **★ 商品サムネは `image_url`** をそのまま `<img src>` に渡せばOK(lipscosme の CDN URL)。
+
+**★ `is_serendipity: true` の商品は「冒険枠」**(似合い圏から少し外れた未知の提案)。
+UI で「いつもと違う冒険」等のバッジを付けて見せてください。そして **この商品への
+like/dislike を送るときは観測の `is_serendipity` も `true` にする**と、探索性
+(θ_explore)が学習されます(冒険提案に当たる人/外す人を区別)。判定基準は API 側で
+「返却 TOP-N 内で ΔE が中央値超 かつ familiarity が中央値未満」と定義(§7.4 配線)。
 
 ---
 

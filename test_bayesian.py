@@ -109,23 +109,54 @@ def test_posterior_pulls_toward_obs() -> None:
     print()
 
 
-# ============ Test 5: dislike (y=-1) は反対方向に θ_color を引く ============
+# ============ Test 5: like は観測側へ、dislike は θ_color を一切動かさない ============
 
-def test_dislike_pulls_opposite() -> None:
-    print("Test 5: dislike (y=-1) は反対方向")
+def test_like_moves_dislike_unchanged() -> None:
+    print("Test 5: like は観測側へ / dislike は θ_color 不変")
     prior = GaussianLab(
         mu=LabValue(L=50, a=0, b=0),
         var=LabValue(L=10, a=10, b=10),
     )
     obs_lab = LabValue(L=80, a=0, b=0)
     likes = [Observation(source="ar_view_like", observed_lab=obs_lab, y=1.0)]
+    # dislike は observed_lab を持っていても θ_color に寄与しない(バグ修正後)
     dislikes = [Observation(source="ar_view_dislike", observed_lab=obs_lab, y=-1.0)]
-    post_like, _ = update_theta_color(prior, likes)
-    post_dislike, _ = update_theta_color(prior, dislikes)
+    post_like, n_like = update_theta_color(prior, likes)
+    post_dislike, n_dislike = update_theta_color(prior, dislikes)
+
+    # like は観測側(L=80)へ μ が動き、分散も縮む
     assert post_like.mu.L > prior.mu.L, "like で μ が観測側に動かない"
-    assert post_dislike.mu.L < prior.mu.L, "dislike で μ が逆側に動かない"
-    print(f"  ✓ like:    μ_L 50 → {post_like.mu.L:.3f} (↑)")
-    print(f"  ✓ dislike: μ_L 50 → {post_dislike.mu.L:.3f} (↓)")
+    assert post_like.var.L < prior.var.L, "like で分散が縮まない"
+
+    # ★dislike は μ も var も prior と完全一致(=一切動かさない)
+    assert n_dislike == 0, f"dislike が観測として数えられている: {n_dislike}"
+    assert post_dislike.mu.L == prior.mu.L, f"dislike で μ_L が動いた: {post_dislike.mu.L}"
+    assert post_dislike.mu.a == prior.mu.a and post_dislike.mu.b == prior.mu.b
+    assert post_dislike.var.L == prior.var.L, f"dislike で σ²_L が動いた: {post_dislike.var.L}"
+    assert post_dislike.var.a == prior.var.a and post_dislike.var.b == prior.var.b
+
+    print(f"  ✓ like:    μ_L 50 → {post_like.mu.L:.3f} (↑), σ²_L 縮小")
+    print(f"  ✓ dislike: μ_L {post_dislike.mu.L:.3f} / σ²_L {post_dislike.var.L:.3f} "
+          f"= prior と完全一致(不変、n={n_dislike})")
+    print()
+
+
+# 混在ケース: like + dislike を同時に渡しても dislike は無視され like だけ効く
+def test_like_dislike_mix() -> None:
+    print("Test 5b: like+dislike 混在 → dislike 無視、like のみ反映")
+    prior = GaussianLab(
+        mu=LabValue(L=50, a=0, b=0),
+        var=LabValue(L=10, a=10, b=10),
+    )
+    like = Observation(source="ar_view_like", observed_lab=LabValue(L=80, a=0, b=0), y=1.0)
+    dislike = Observation(source="ar_view_dislike", observed_lab=LabValue(L=20, a=0, b=0), y=-1.0)
+    post_like_only, n1 = update_theta_color(prior, [like])
+    post_mixed, n2 = update_theta_color(prior, [like, dislike])
+    # dislike が混ざっても like 単独と完全一致
+    assert n1 == n2 == 1, (n1, n2)
+    assert abs(post_mixed.mu.L - post_like_only.mu.L) < 1e-12
+    assert abs(post_mixed.var.L - post_like_only.var.L) < 1e-12
+    print(f"  ✓ like単独 μ_L={post_like_only.mu.L:.4f} == 混在 μ_L={post_mixed.mu.L:.4f}")
     print()
 
 
@@ -216,9 +247,10 @@ if __name__ == "__main__":
     test_thickness_table_match()
     test_variance_monotone()
     test_posterior_pulls_toward_obs()
-    test_dislike_pulls_opposite()
+    test_like_moves_dislike_unchanged()
+    test_like_dislike_mix()
     test_pref_linear_regression()
     test_apply_all_integration()
     test_thickness_clamped()
     print("=" * 50)
-    print("✅ bayesian.py: 全 8 テスト合格")
+    print("✅ bayesian.py: 全 9 テスト合格")

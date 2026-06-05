@@ -62,10 +62,22 @@ def update_theta_color(
 ) -> Tuple[GaussianLab, int]:
     """θ_color の事後分布を計算(各次元独立)。
 
-    対象観測: observed_lab を持つもの(pair_color / behavior / ar_view_*)。
-    観測モデル: Lab_k,j ~ N(y_k · μ_j, σ²_src)
+    対象観測: observed_lab を持つ「肯定的」観測(pair_color の選択側 / behavior /
+    ar_view_like)。**ar_view_dislike は除外する**。
+
+    理由(重要): dislike の observed_lab を平均更新に通すと、嫌った色の方向へ
+    μ_color が引き寄せられ(y=-1 で r を負方向に加算)、さらに分散も縮んで
+    「偽の確信」が生まれる。dislike は θ_color を肯定的に動かす根拠にならない
+    (反発させたいなら別の repulsive モデルが必要だが本 MVP の範囲外)。
+    θ_thickness が ar_view_like のみ拾う設計と思想を揃える。
+
+    不変条件: 除外後に残る observed_lab 観測は構成上すべて y=+1。
+      - pair_color: 選択側のみ observed_lab を持ち y=+1(非選択側は observed_x20 のみ)
+      - behavior / ar_view_like: y=+1(肯定観測)
+    よって観測モデル Lab_k,j ~ N(μ_j, σ²_src) として y を畳む。
     """
-    relevant = [o for o in observations if o.observed_lab is not None]
+    relevant = [o for o in observations
+                if o.observed_lab is not None and o.source != "ar_view_dislike"]
     if not relevant:
         return prior, 0
 
@@ -81,9 +93,9 @@ def update_theta_color(
         for o in relevant:
             sigma2 = _sigma2(o.source)
             r = _lab_to_tuple(o.observed_lab)[j]
-            y = o.y
-            precision += (y * y) / sigma2
-            weighted_sum += (y * r) / sigma2
+            # 残るのは y=+1 の肯定観測のみ(上記の不変条件)
+            precision += 1.0 / sigma2
+            weighted_sum += r / sigma2
         var_j = 1.0 / precision
         new_var[j] = var_j
         new_mu[j] = var_j * weighted_sum

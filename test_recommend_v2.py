@@ -195,6 +195,40 @@ def test_top_n_sorted() -> None:
     print(f"  ✓ r_final 降順: {[f'{r:.2f}' for r in rs]}\n")
 
 
+def test_serendipity_flag() -> None:
+    print("Test 8: is_serendipity フラグ(遠い×未知 象限)")
+    # mu_color に近い親しみ商品 + 遠くて未知の冒険商品を混ぜる
+    user = _make_user(mu_thickness=1.0, mu_explore=0.5)
+    user.theta_pref = GaussianVec20(mu=[2.0] + [0.0] * 19, var=[1.0] * 20)
+    rows = []
+    # 近い&馴染み(x20 が μ_pref と揃う)→ serendipity でない
+    for i in range(3):
+        rows.append(_make_km_row(f"near{i}", LabValue(L=55, a=35, b=5),
+                                  x20=[1.0] + [0.0] * 19))
+    # 遠い&未知(μ_color から離れ、x20 が μ_pref と直交)→ serendipity 候補
+    rows.append(_make_km_row("far_unknown", LabValue(L=25, a=-20, b=-10),
+                             x20=[0.0, 1.0] + [0.0] * 18))
+    res = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=4))
+    flags = {r.product_id: r.is_serendipity for r in res.results}
+    print(f"  flags: {flags}")
+    # far_unknown が冒険枠、near* は非冒険枠
+    assert flags.get("far_unknown") is True, "遠い×未知が serendipity になっていない"
+    assert all(not flags[f"near{i}"] for i in range(3)), "近い商品に冒険枠が立っている"
+    print("  ✓ 遠い×未知 のみ is_serendipity=True")
+    print()
+
+
+def test_serendipity_needs_min_items() -> None:
+    print("Test 9: TOP-N が 3 未満なら serendipity 立てない")
+    user = _make_user(mu_thickness=1.0)
+    rows = [_make_km_row("a", LabValue(L=55, a=35, b=5)),
+            _make_km_row("b", LabValue(L=25, a=-20, b=-10))]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=2))
+    assert all(not r.is_serendipity for r in res.results), "2件で冒険枠が立った"
+    print("  ✓ 2件では全て is_serendipity=False")
+    print()
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -203,5 +237,7 @@ if __name__ == "__main__":
     test_thickness_shift_changes_ranking()
     test_serendipity_penalty()
     test_top_n_sorted()
+    test_serendipity_flag()
+    test_serendipity_needs_min_items()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 7 テスト合格")
+    print("✅ recommend_v2.py: 全 9 テスト合格")

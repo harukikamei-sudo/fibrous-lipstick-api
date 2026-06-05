@@ -242,6 +242,13 @@ class RecommendV2Item(BaseModel):
     image_url: Optional[str] = Field(
         None, description="商品スウォッチ画像 URL(Kawanoさん AR の表示用)"
     )
+    is_serendipity: bool = Field(
+        False,
+        description="セレンディピティ(冒険)枠か。返却 TOP-N 内で「μ_color から遠い"
+                    "(ΔE 中央値超)かつ familiarity が低い(中央値未満)」象限の商品に立つ。"
+                    "フロントはこの商品への like/dislike を is_serendipity=True の観測として"
+                    "送ることで θ_explore を更新できる(設計書 §7.4 / Part VI の配線)。",
+    )
 
 
 class RecommendV2Response(BaseModel):

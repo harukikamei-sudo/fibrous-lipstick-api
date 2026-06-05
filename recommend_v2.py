@@ -161,9 +161,36 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
     items.sort(key=lambda it: it.r_final, reverse=True)
     top = items[: req.top_n]
 
+    _flag_serendipity(top)
+
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,
         beta_used=beta,
         results=top,
     )
+
+
+def _flag_serendipity(top: List[RecommendV2Item]) -> None:
+    """返却 TOP-N に is_serendipity を立てる(設計書 Part VI / §7.4 の配線)。
+
+    判定基準(明文化・自己校正・β 非依存):
+      返却 TOP-N の中で
+        (a) delta_e_to_color > median(ΔE)   … μ_color から遠い(似合い圏の外)
+        (b) familiarity      < median(fam)  … 馴染みが薄い(未知)
+      の **両方**を満たす「遠い×未知」象限の商品を冒険枠とする。
+
+    - β(探索性)に依存しないので、explore 事前が低くてもフラグは立ち、
+      ユーザーが反応 → is_serendipity=True 観測 → θ_explore が動ける。
+    - TOP-N 内の相対判定なので絶対閾値のチューニング不要(ユーザー間で頑健)。
+    - 要素が 3 未満、または ΔE/familiarity が全て同値で中央値分割が退化する場合は
+      フラグ無し(無理に立てない)。
+    """
+    import statistics
+
+    if len(top) < 3:
+        return
+    med_de = statistics.median(it.delta_e_to_color for it in top)
+    med_fam = statistics.median(it.familiarity for it in top)
+    for it in top:
+        it.is_serendipity = (it.delta_e_to_color > med_de) and (it.familiarity < med_fam)
