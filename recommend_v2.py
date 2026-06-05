@@ -159,14 +159,49 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
         ))
 
     items.sort(key=lambda it: it.r_final, reverse=True)
-    top = items[: req.top_n]
 
+    if not req.rerank:
+        # ===== 従来パス(完全後方互換): R_final 降順 =====
+        top = items[: req.top_n]
+        _flag_serendipity(top)
+        return RecommendV2Response(
+            user_id=user.user_id,
+            mu_thickness=mu_thickness,
+            beta_used=beta,
+            reranked_by_eig=False,
+            used_explore_weight=None,
+            results=top,
+        )
+
+    # ===== EIG 再ランクパス(rerank=True のときだけ発動)=====
+    # 循環 import 回避のため遅延 import(active_learning は recommend_v2 を import する)
+    import active_learning as al
+
+    w = req.explore_weight if req.explore_weight is not None else mu_explore
+    candidates = [
+        al.Candidate(product_id=it.product_id, effective_lab=it.effective_lab,
+                     r_final=it.r_final)
+        for it in items
+    ]
+    scored = al.next_best(candidates, user.theta_color, mu_explore=w)
+
+    by_id = {it.product_id: it for it in items}
+    reranked: List[RecommendV2Item] = []
+    for s in scored:
+        it = by_id[s.product_id]
+        it.eig_bits = s.eig_bits
+        it.p_like = s.p_like
+        it.score = s.score
+        reranked.append(it)
+
+    top = reranked[: req.top_n]
     _flag_serendipity(top)
-
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,
         beta_used=beta,
+        reranked_by_eig=True,
+        used_explore_weight=max(0.0, min(1.0, w)),
         results=top,
     )
 

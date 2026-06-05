@@ -147,23 +147,28 @@ def test_update_user_empty_obs_422() -> None:
     assert_status(r, 422, "空 observations")
 
 
-def test_update_user_dislike_pulls_opposite() -> None:
-    hr("/v13/update_user: dislike (y=-1) で θ_color が逆方向")
+def test_update_user_dislike_does_not_move_color() -> None:
+    hr("/v13/update_user: dislike は θ_color を一切動かさない(修正1)")
     user = make_user()
-    before_L = user["theta_color"]["mu"]["L"]
+    before = user["theta_color"]
     r = client.post("/v13/update_user", json={
         "user": user,
         "observations": [{
             "source": "ar_view_dislike",
             "product_id": "rmd_blur_fudge_03",
-            "observed_lab": {"L": 80, "a": 40, "b": 20},  # 明るい
+            "observed_lab": {"L": 80, "a": 40, "b": 20},  # 明るい色を ✕
             "y": -1.0,
         }],
     })
     assert_status(r, 200, "dislike 観測")
-    new_L = r.json()["user"]["theta_color"]["mu"]["L"]
-    # dislike で「明るい色」を否定 → μ_color L は事前より下がる方向
-    print(f"  ✓ μ_color_L: {before_L:.2f} → {new_L:.2f} (dislike で逆方向)")
+    d = r.json()
+    after = d["user"]["theta_color"]
+    # μ も σ² も prior と完全一致(dislike は色を歪めない)
+    for k in ("L", "a", "b"):
+        assert after["mu"][k] == before["mu"][k], f"dislike で μ_{k} が動いた"
+        assert after["var"][k] == before["var"][k], f"dislike で σ²_{k} が動いた"
+    assert d["n_applied"]["theta_color"] == 0, d["n_applied"]
+    print(f"  ✓ μ_color_L 不変 {before['mu']['L']:.2f}, theta_color n_applied=0")
 
 
 # ============ /v13/recommend ============
@@ -240,6 +245,62 @@ def test_recommend_serendipity_explore_high() -> None:
     print(f"  ✓ explore=0→β={r0['beta_used']}, explore=1→β={r1['beta_used']}")
 
 
+def test_recommend_default_no_rerank() -> None:
+    hr("/v13/recommend: 既定は rerank なし(後方互換)")
+    user = make_user()
+    r = client.post("/v13/recommend", json={"user": user, "top_n": 5})
+    assert_status(r, 200, "default recommend")
+    d = r.json()
+    assert d["reranked_by_eig"] is False
+    assert d["used_explore_weight"] is None
+    # eig 診断は None(従来出力に EIG が混ざらない)
+    for it in d["results"]:
+        assert it["eig_bits"] is None and it["p_like"] is None and it["score"] is None
+    # 並びは r_final 降順(従来通り)
+    rs = [it["r_final"] for it in d["results"]]
+    assert rs == sorted(rs, reverse=True)
+    print("  ✓ reranked_by_eig=False, eig 系 None, r_final 降順")
+
+
+def test_recommend_rerank_w0_equals_default() -> None:
+    hr("/v13/recommend: rerank=true + w=0 は既定と同じ並び(純 exploit)")
+    user = make_user()
+    base = client.post("/v13/recommend", json={"user": user, "top_n": 5}).json()
+    rk = client.post("/v13/recommend", json={
+        "user": user, "top_n": 5, "rerank": True, "explore_weight": 0.0}).json()
+    assert rk["reranked_by_eig"] is True
+    assert rk["used_explore_weight"] == 0.0
+    base_ids = [it["product_id"] for it in base["results"]]
+    rk_ids = [it["product_id"] for it in rk["results"]]
+    assert base_ids == rk_ids, (base_ids, rk_ids)
+    # rerank時は eig 診断が乗る
+    for it in rk["results"]:
+        assert it["eig_bits"] is not None and it["p_like"] is not None
+    print(f"  ✓ w=0 並び == 既定, eig_bits 付与: {rk_ids[:3]}")
+
+
+def test_recommend_rerank_explore_weight_default() -> None:
+    hr("/v13/recommend: rerank=true + explore_weight 省略 → θ_explore.mu 使用")
+    user = make_user()
+    user["theta_explore"]["mu"] = 0.7
+    r = client.post("/v13/recommend", json={"user": user, "top_n": 5, "rerank": True}).json()
+    assert abs(r["used_explore_weight"] - 0.7) < 1e-9, r["used_explore_weight"]
+    print(f"  ✓ used_explore_weight={r['used_explore_weight']} == θ_explore.mu")
+
+
+def test_recommend_rerank_top1_de_monotonic() -> None:
+    hr("/v13/recommend: w 0→0.5→1 で top1 の ΔE が単調増加(exploit→explore)")
+    user = make_user()
+    de = []
+    for w in (0.0, 0.5, 1.0):
+        r = client.post("/v13/recommend", json={
+            "user": user, "top_n": 5, "rerank": True, "explore_weight": w}).json()
+        de.append(r["results"][0]["delta_e_to_color"])
+    print(f"  top1 ΔE: w0={de[0]:.2f} w0.5={de[1]:.2f} w1={de[2]:.2f}")
+    assert de[0] <= de[1] <= de[2], f"ΔE が単調増加でない: {de}"
+    print("  ✓ w を上げるほど遠い色(探索的)が先頭に")
+
+
 if __name__ == "__main__":
     # /v13/pair_compare/init
     test_pair_init_returns_10_pairs()
@@ -251,11 +312,16 @@ if __name__ == "__main__":
     # /v13/update_user
     test_update_user_normal()
     test_update_user_empty_obs_422()
-    test_update_user_dislike_pulls_opposite()
+    test_update_user_dislike_does_not_move_color()
     # /v13/recommend
     test_recommend_normal()
     test_recommend_with_line_filter()
     test_recommend_thickness_changes_eff_lab()
     test_recommend_serendipity_explore_high()
+    # /v13/recommend + 能動学習(rerank)
+    test_recommend_default_no_rerank()
+    test_recommend_rerank_w0_equals_default()
+    test_recommend_rerank_explore_weight_default()
+    test_recommend_rerank_top1_de_monotonic()
     print("\n" + "=" * 50)
-    print("✅ /v13/* endpoints: 全 11 テスト合格")
+    print("✅ /v13/* endpoints: 全 15 テスト合格")

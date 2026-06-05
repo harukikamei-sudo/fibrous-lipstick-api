@@ -51,7 +51,7 @@ lip API は **state を持ちません**。リクエスト毎に caller(Kawano�
 | GET  | `/v13/pair_compare/init`  | 10 ペアを取得(初回診断) |
 | POST | `/v13/pair_compare/apply` | ペア選択 → 事前分布構築 |
 | POST | `/v13/update_user`        | 観測ログ → 更新後 UserState |
-| POST | `/v13/recommend`          | UserState → TOP-N 推薦 |
+| POST | `/v13/recommend`          | UserState → TOP-N 推薦(`rerank:true` で EIG 能動学習) |
 
 ベース URL(本番):
 ```
@@ -249,6 +249,54 @@ UI で「いつもと違う冒険」等のバッジを付けて見せてくだ�
 like/dislike を送るときは観測の `is_serendipity` も `true` にする**と、探索性
 (θ_explore)が学習されます(冒険提案に当たる人/外す人を区別)。判定基準は API 側で
 「返却 TOP-N 内で ΔE が中央値超 かつ familiarity が中央値未満」と定義(§7.4 配線)。
+
+### 4.5 能動学習(EIG)— `/v13/recommend` の `rerank` オプション
+
+**新エンドポイントは無い。** `/v13/recommend` に `rerank:true` を足すだけで、
+「似合う順(exploit)」から「次に試着させると一番学べる順(explore 混合)」に切り替わる。
+R_final(似合い)と EIG(期待情報利得)をブレンドし、探索性 `θ_explore` で配合を変える。
+
+リクエスト:
+```jsonc
+{
+  "user": { /* UserState */ },
+  "top_n": 5,
+  "rerank": true,            // ← これだけで能動選択。既定 false は従来と完全同一
+  "explore_weight": 0.5      // 任意。0=似合い重視, 1=冒険重視。
+                             // 省略時は user.theta_explore.mu が自動で効く
+}
+```
+
+レスポンス(rerank 時のみ各 result に eig_bits / p_like / score が付く):
+```jsonc
+{
+  "user_id": "mina_001",
+  "mu_thickness": 0.88,
+  "beta_used": 2.5,
+  "reranked_by_eig": true,
+  "used_explore_weight": 0.5,   // 実際に使った w(指定値 or θ_explore.mu)
+  "results": [
+    {
+      "product_id": "rmd_blur_fudge_07",
+      "effective_lab": { "L": 44, "a": 40, "b": 18 },
+      "image_url": "https://...",
+      "r_final": -9.1,        // 似合い(exploit)指標
+      "delta_e_to_color": 11.8,
+      "eig_bits": 6.6,        // 期待情報利得(explore)指標 [bit](rerank時のみ)
+      "p_like": 0.46,         // like 確率(ΔE2000 知覚シグモイド、rerank時のみ)
+      "score": 0.78,          // (1−w)·norm(R_final)+w·norm(EIG)(rerank時のみ)
+      ...
+    }
+  ]
+}
+```
+
+**★ フロントは recommend 呼び出しに `rerank:true` を足すだけで能動選択になる。**
+`explore_weight` 省略時は θ_explore 事後平均が自動で効く(冒険好き→遠い色、保守的→近い色)。
+既定(`rerank` 無し)は並び・出力とも従来と完全に同一なので、既存の呼び出しは無変更で OK。
+
+> 注: EIG は「P(like) は ΔE2000(知覚)で、KL は Lab座標の情報量で」測る異指標の近似。
+> EIG は中間距離の色でピーク(近すぎ=学びが薄い、遠すぎ=当たらない)。
 
 ---
 

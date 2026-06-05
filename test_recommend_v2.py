@@ -229,6 +229,44 @@ def test_serendipity_needs_min_items() -> None:
     print()
 
 
+def test_rerank_backward_compat() -> None:
+    print("Test 10: rerank 既定 False は従来挙動(後方互換)")
+    user = _make_user(mu_thickness=1.0, mu_explore=0.5)
+    rows = [_make_km_row(f"p{i}", LabValue(L=30 + i * 6, a=30, b=10)) for i in range(8)]
+    base = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=5))
+    assert base.reranked_by_eig is False
+    assert base.used_explore_weight is None
+    assert all(it.eig_bits is None and it.score is None for it in base.results)
+    rs = [it.r_final for it in base.results]
+    assert rs == sorted(rs, reverse=True)
+    print("  ✓ reranked_by_eig=False / eig None / r_final 降順")
+    print()
+
+
+def test_rerank_w0_matches_default_order() -> None:
+    print("Test 11: rerank=True + w=0 は既定と同じ並び")
+    user = _make_user(mu_thickness=1.0, mu_explore=0.5)
+    rows = [_make_km_row(f"p{i}", LabValue(L=30 + i * 6, a=30, b=10)) for i in range(8)]
+    base = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=5))
+    rk = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=5,
+                                         rerank=True, explore_weight=0.0))
+    assert rk.reranked_by_eig is True and rk.used_explore_weight == 0.0
+    assert [it.product_id for it in base.results] == [it.product_id for it in rk.results]
+    assert all(it.eig_bits is not None for it in rk.results)
+    print("  ✓ w=0 並び一致 + eig_bits 付与")
+    print()
+
+
+def test_rerank_explore_weight_default_uses_theta() -> None:
+    print("Test 12: explore_weight 省略 → θ_explore.mu 使用")
+    user = _make_user(mu_thickness=1.0, mu_explore=0.65)
+    rows = [_make_km_row(f"p{i}", LabValue(L=30 + i * 6, a=30, b=10)) for i in range(8)]
+    rk = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=5, rerank=True))
+    assert abs(rk.used_explore_weight - 0.65) < 1e-9
+    print(f"  ✓ used_explore_weight={rk.used_explore_weight} == μ_explore")
+    print()
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -239,5 +277,8 @@ if __name__ == "__main__":
     test_top_n_sorted()
     test_serendipity_flag()
     test_serendipity_needs_min_items()
+    test_rerank_backward_compat()
+    test_rerank_w0_matches_default_order()
+    test_rerank_explore_weight_default_uses_theta()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 9 テスト合格")
+    print("✅ recommend_v2.py: 全 12 テスト合格")

@@ -738,6 +738,7 @@ def v13_recommend(req: RecommendV2Request):
         km_table = req.km_table
 
     # km_table をリクエストに詰め直して recommend_v2 を呼ぶ
+    # rerank / explore_weight も透過(既定 False なら従来挙動)
     full_req = RecommendV2Request(
         user=req.user,
         km_table=km_table,
@@ -746,6 +747,8 @@ def v13_recommend(req: RecommendV2Request):
         alpha=req.alpha,
         beta_max=req.beta_max,
         familiarity_weights=req.familiarity_weights,
+        rerank=req.rerank,
+        explore_weight=req.explore_weight,
     )
     return rec_v2.recommend_v2(full_req)
 

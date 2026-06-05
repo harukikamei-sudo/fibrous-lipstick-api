@@ -226,6 +226,18 @@ class RecommendV2Request(BaseModel):
         min_length=3, max_length=3,
         description="[w1 対話明言, w2 cosine, w3 ΔE_inv](既定 4,3,2)"
     )
+    # ---- 能動学習(EIG 再ランク)。既定は従来挙動(完全後方互換)----
+    rerank: bool = Field(
+        False,
+        description="True で EIG(期待情報利得)再ランクを発動。False(既定)なら"
+                    "従来どおり R_final 降順で並び・出力とも完全に同一。"
+    )
+    explore_weight: Optional[float] = Field(
+        None, ge=0.0, le=1.0,
+        description="EIG ブレンド重み w(0=純 exploit/R_final, 1=純 explore/EIG)。"
+                    "None かつ rerank=True なら user.theta_explore.mu を使用。"
+                    "rerank=False のときは無視される。"
+    )
 
 
 class RecommendV2Item(BaseModel):
@@ -249,10 +261,26 @@ class RecommendV2Item(BaseModel):
                     "フロントはこの商品への like/dislike を is_serendipity=True の観測として"
                     "送ることで θ_explore を更新できる(設計書 §7.4 / Part VI の配線)。",
     )
+    # ---- EIG 再ランク時のみ非 null(rerank=False では None)----
+    eig_bits: Optional[float] = Field(
+        None, description="期待情報利得 [bit](rerank=True 時のみ)"
+    )
+    p_like: Optional[float] = Field(
+        None, description="like 確率(ΔE2000 知覚シグモイド、rerank=True 時のみ)"
+    )
+    score: Optional[float] = Field(
+        None, description="(1−w)·norm(R_final) + w·norm(EIG)(rerank=True 時のみ)"
+    )
 
 
 class RecommendV2Response(BaseModel):
     user_id: str
     mu_thickness: float = Field(..., description="このリクエスト時点の μ_thickness")
     beta_used: float = Field(..., description="μ_explore から計算された β")
+    reranked_by_eig: bool = Field(
+        False, description="EIG 再ランクが発動したか(rerank=True 時 True)"
+    )
+    used_explore_weight: Optional[float] = Field(
+        None, description="再ランクで実際に使った w(rerank=False では None)"
+    )
     results: List[RecommendV2Item]
