@@ -452,6 +452,142 @@ def generate_convergence_report(specs: List[Dict], n_max: int = 40,
     return out_path, report
 
 
+# ============ 図3: EIG(能動学習)の可視化 ============
+
+def generate_eig_report(specs: List[Dict], out_path: str = "bayes_eig.png"
+                        ) -> Tuple[str, List[str]]:
+    """期待情報利得 EIG の効き目を可視化(active_learning と同じ数理)。
+
+    (K) EIG 分解 vs ΔE: P(like)↓ × KL↑ = EIG(中間距離でピーク)
+    (L) 事前確信度 σ² 別 EIG: 既に確信が強いほど1観測の学びは小さい
+    (M) explore_weight スイープ: w を上げると選ばれる top1 の ΔE が単調増加
+    (N) 候補散布(ΔE × EIG): w=0(R_final 最大)と w=1(EIG 最大)の選択を対比
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    try:
+        import japanize_matplotlib  # noqa: F401
+    except Exception:
+        pass
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    import active_learning as al
+
+    _, prior_c = _build_prior()
+    mu = (prior_c.mu.L, prior_c.mu.a, prior_c.mu.b)
+
+    def _probe(d):  # μ_color から L*(明度)方向に d 暗くしたプローブ色
+        # L 方向は CIEDE2000 の彩度圧縮を受けず ΔE が広く伸びるため、
+        # EIG のピーク(中間距離)が視野に収まる。a*/b* は固定。
+        return LabValue(L=max(1.0, mu[0] - d), a=mu[1], b=mu[2])
+
+    # 共通: d をスイープ(ΔE 軸は実測 ΔE2000、~40 まで伸びてピークが中央に来る)
+    ds = np.linspace(0.0, 46.0, 60)
+    probes = [_probe(d) for d in ds]
+    eig_main = [al.expected_information_gain(prior_c, p) for p in probes]
+    de_axis = [e.delta_e for e in eig_main]
+    p_like_axis = [e.p_like for e in eig_main]
+    kl_axis = [e.kl_if_liked_bits for e in eig_main]
+    eig_axis = [e.eig_bits for e in eig_main]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle("Active learning — Expected Information Gain (EIG) over θ_color",
+                 fontsize=14, fontweight="bold")
+
+    # ---- (K) EIG 分解 ----
+    axK = axes[0, 0]
+    axK.plot(de_axis, p_like_axis, color="#3aa860", lw=2, label="P(like) [0..1]")
+    axK.plot(de_axis, _minmax_list(kl_axis), color="#3b7fd0", lw=2, ls="--",
+             label="KL if liked (norm)")
+    axK.plot(de_axis, _minmax_list(eig_axis), color="#e75480", lw=3,
+             label="EIG = P(like)·KL (norm)")
+    peak = max(range(len(eig_axis)), key=lambda i: eig_axis[i])
+    axK.axvline(de_axis[peak], color="#e75480", ls=":", lw=1.2)
+    axK.annotate(f"sweet spot\nΔE≈{de_axis[peak]:.0f}",
+                 xy=(de_axis[peak], 0.95), fontsize=8, color="#e75480")
+    axK.axvline(al.DE50_DEFAULT, color="gray", ls=":", lw=1)
+    axK.text(al.DE50_DEFAULT + 0.5, 0.5, "de50\n(P=0.5)", fontsize=8, color="gray")
+    axK.set_title("(K) EIG decomposition\nnear=little to learn / far=won't like → peak in middle")
+    axK.set_xlabel("ΔE2000 from μ_color")
+    axK.set_ylabel("normalized")
+    axK.legend(fontsize=8)
+    axK.grid(alpha=0.3)
+
+    # ---- (L) 事前確信度別 EIG ----
+    axL = axes[0, 1]
+    for var0, col in [(0.1, "#1a1a1a"), (1.0, "#3b7fd0"), (10.0, "#e07b3a")]:
+        th = GaussianLab(mu=LabValue(L=mu[0], a=mu[1], b=mu[2]),
+                         var=LabValue(L=var0, a=var0, b=var0))
+        eigs = [al.expected_information_gain(th, p).eig_bits for p in probes]
+        axL.plot(de_axis, eigs, color=col, lw=2, label=f"σ²₀={var0}")
+    axL.set_title("(L) EIG vs prior confidence σ²₀\n(more confident already → less to gain per obs)")
+    axL.set_xlabel("ΔE2000 from μ_color")
+    axL.set_ylabel("EIG [bit]")
+    axL.legend(fontsize=8)
+    axL.grid(alpha=0.3)
+
+    # ---- (M) explore_weight スイープ → top1 の ΔE ----
+    axM = axes[1, 0]
+    # 合成候補: ΔE を広く散らし、R_final = -α·ΔE(似合い ∝ -ΔE)
+    cand_d = np.linspace(1.0, 44.0, 16)
+    cand = [al.Candidate(product_id=f"c{i}", effective_lab=_probe(d),
+                         r_final=-3.0 * al.delta_e_2000(_probe(d), prior_c.mu))
+            for i, d in enumerate(cand_d)]
+    ws = np.linspace(0.0, 1.0, 21)
+    top1_de = []
+    for w in ws:
+        scored = al.next_best(cand, prior_c, mu_explore=float(w))
+        top1_de.append(scored[0].delta_e)
+    axM.plot(ws, top1_de, color="#e75480", lw=2.5, marker="o", ms=3)
+    axM.set_title("(M) explore_weight sweep → top-1 ΔE\n(exploit → explore as w rises)")
+    axM.set_xlabel("explore_weight w (= θ_explore.mu when omitted)")
+    axM.set_ylabel("ΔE2000 of selected top-1")
+    axM.grid(alpha=0.3)
+
+    # ---- (N) 候補散布 ΔE × EIG ----
+    axN = axes[1, 1]
+    cand_eig = [al.expected_information_gain(prior_c, c.effective_lab).eig_bits for c in cand]
+    cand_de = [al.delta_e_2000(c.effective_lab, prior_c.mu) for c in cand]
+    sc = axN.scatter(cand_de, cand_eig, c=[c.r_final for c in cand],
+                     cmap="viridis", s=60, edgecolor="white")
+    fig.colorbar(sc, ax=axN, label="R_final (exploit)")
+    # w=0 の選択(R_final 最大 = ΔE 最小)
+    i0 = max(range(len(cand)), key=lambda i: cand[i].r_final)
+    # w=1 の選択(EIG 最大)
+    i1 = max(range(len(cand)), key=lambda i: cand_eig[i])
+    axN.annotate("w=0 pick\n(exploit)", xy=(cand_de[i0], cand_eig[i0]),
+                 xytext=(cand_de[i0] + 6, cand_eig[i0] + 0.5), fontsize=9, color="#1a1a1a",
+                 arrowprops=dict(arrowstyle="->", color="#1a1a1a"))
+    axN.annotate("w=1 pick\n(explore)", xy=(cand_de[i1], cand_eig[i1]),
+                 xytext=(cand_de[i1] - 12, cand_eig[i1] + 0.5), fontsize=9, color="#e75480",
+                 arrowprops=dict(arrowstyle="->", color="#e75480"))
+    axN.set_title("(N) candidates ΔE × EIG\n(w=0 takes nearest, w=1 takes max-EIG)")
+    axN.set_xlabel("ΔE2000 from μ_color")
+    axN.set_ylabel("EIG [bit]")
+    axN.grid(alpha=0.3)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+
+    report: List[str] = []
+    report.append("=== EIG (active learning) report ===")
+    report.append(f"prior θ_color: μ=({mu[0]:.1f},{mu[1]:.1f},{mu[2]:.1f}) "
+                  f"σ²_L={prior_c.var.L:.4f}, σ²_obs(ar_like)={al.SIGMA2_AR_LIKE}")
+    report.append(f"EIG スイートスポット: ΔE≈{de_axis[peak]:.0f}(de50={al.DE50_DEFAULT})")
+    report.append(f"explore_weight 0→1 で top1 ΔE: {top1_de[0]:.1f} → {top1_de[-1]:.1f} "
+                  f"({'単調増加' if all(top1_de[i] <= top1_de[i+1] + 1e-9 for i in range(len(top1_de)-1)) else '非単調'})")
+    return out_path, report
+
+
+def _minmax_list(values: Sequence[float]) -> List[float]:
+    lo, hi = min(values), max(values)
+    if hi - lo < 1e-12:
+        return [0.5 for _ in values]
+    return [(v - lo) / (hi - lo) for v in values]
+
+
 # ============ personas_cli から Persona オブジェクト → spec へ ============
 
 def specs_from_personas(personas) -> List[Dict]:

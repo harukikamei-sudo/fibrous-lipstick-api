@@ -463,6 +463,8 @@ def cmd_plot(n: int = 15) -> None:
         n_max = max(n, 30)
         out2, report2 = bayes_plot.generate_convergence_report(
             specs, n_max=n_max, out_path="bayes_convergence.png")
+        # 図3: EIG(能動学習)の効き目
+        out3, report3 = bayes_plot.generate_eig_report(specs, out_path="bayes_eig.png")
     except ImportError:
         print(f"{RED}❌ matplotlib が無い。`.venv/bin/pip install -r requirements-ui.txt`{RESET}")
         return
@@ -486,9 +488,12 @@ def cmd_plot(n: int = 15) -> None:
     _print_report(report1)
     print()
     _print_report(report2)
+    print()
+    _print_report(report3)
     print(f"\n{GREEN}✅ 図1(統計ビュー)を保存: {BOLD}{out1}{RESET}")
-    print(f"{GREEN}✅ 図2(収束速度)を保存: {BOLD}{out2}{RESET}{GREEN} "
-          f"(open bayes_report.png bayes_convergence.png){RESET}")
+    print(f"{GREEN}✅ 図2(収束速度)を保存: {BOLD}{out2}{RESET}")
+    print(f"{GREEN}✅ 図3(EIG 能動学習)を保存: {BOLD}{out3}{RESET}{GREEN} "
+          f"(open bayes_report.png bayes_convergence.png bayes_eig.png){RESET}")
 
 
 # ============ ヘルプ ============

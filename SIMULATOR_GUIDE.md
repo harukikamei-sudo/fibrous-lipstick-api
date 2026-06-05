@@ -110,9 +110,19 @@ cd ~/Desktop/fibrous-lipstick-api
 > σ² はデータ非依存(件数だけで決まる)なので CI の N* は全ペルソナ共通、μ の N* は
 > prior-target gap が大きいほど遅い。
 
+**`bayes_eig.png`(能動学習 EIG、2×2)** — `/v13/recommend` の `rerank` の中身:
+- (K) EIG 分解: P(like)↓ × KL↑ = EIG(**中間距離 ΔE≈14 でピーク**=スイートスポット)
+- (L) 事前確信度 σ²₀ 別 EIG(既に確信が強いほど1観測で学べる量が小さい)
+- (M) explore_weight スイープ → 選ばれる top1 の ΔE が単調増加(exploit→explore)
+- (N) 候補散布(ΔE × EIG): w=0 は最近傍(exploit)、w=1 は EIG 最大(explore)を選ぶ
+
+> **洞察(EIG):** 近すぎる色は「もう知ってる=学びが薄い」、遠すぎる色は「当たらない
+> (P(like)→0)」。その積 EIG が中間でピーク = 能動学習が選ぶ「次の1本」。w=θ_explore.mu
+> で配合が決まり、冒険好きほど遠い色を提案する。
+
 > **注意:** この Mac は matplotlib の**初回 import に 30〜85 秒**かかる(macOS の dylib
 > 検証)。`plot` が固まって見えても落ちていない。バックグラウンド実行ではなく REPL 内
-> (前景)で叩くこと。生成後は `open bayes_report.png bayes_convergence.png`。
+> (前景)で叩くこと。生成後は `open bayes_report.png bayes_convergence.png bayes_eig.png`。
 
 ---
 
