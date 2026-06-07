@@ -4,6 +4,7 @@ import math
 import sys
 
 from bayesian import (
+    SIGMA2_BY_SOURCE,
     SIGMA2_OBS_THICKNESS,
     apply_observations,
     update_theta_color,
@@ -225,6 +226,39 @@ def test_thickness_clamped() -> None:
     print()
 
 
+# ============ Test 9: ペア比較事前の θ_color が SD≈2.0 に較正されている ============
+
+def test_pair_prior_color_sd_calibrated() -> None:
+    """pair_compare の事前構築後、θ_color の SD が ≈2.0 Lab であること。
+
+    不変条件は**式で**書く(マジックナンバー固定にしない):
+      σ²_N = 1/(1/σ²_0 + N_color/σ²_obs[pair_color])
+    σ²_obs を変えてもこの式が成り立つことを検証し、かつ較正目標 SD≈2.0 を確認。
+    """
+    print("Test 9: ペア比較事前 θ_color の SD≈2.0 較正(式で検証)")
+    import pair_compare as pc
+    from models_v13 import PairApplyRequest, PairChoice
+
+    choices = [PairChoice(pair_id=p.pair_id, chose="left") for p in pc.PAIR_BANK]
+    resp = pc.apply_pair_choices(
+        PairApplyRequest(choices=choices, pc_season="ブルベ夏")  # warmness 省略 → σ²_0=SIGMA2_BASE
+    )
+    n_color = resp.n_color_obs
+    var0 = pc.SIGMA2_BASE  # 100.0
+    sig_obs = SIGMA2_BY_SOURCE["pair_color"]
+    expected_var = 1.0 / (1.0 / var0 + n_color / sig_obs)  # 解析解(式)
+
+    for dim in ("L", "a", "b"):
+        got = getattr(resp.theta_color.var, dim)
+        assert abs(got - expected_var) < 1e-9, f"σ²_{dim}={got} != 解析解 {expected_var}"
+
+    sd = math.sqrt(expected_var)
+    assert 1.8 <= sd <= 2.2, f"SD={sd:.3f} が較正目標 2.0 から外れている"
+    print(f"  ✓ n_color={n_color}, σ²_obs={sig_obs:.2f} → σ²_N={expected_var:.4f} "
+          f"(SD={sd:.3f}) = 解析解一致 + SD≈2.0")
+    print()
+
+
 # ============ 共通 fixture ============
 
 def _make_default_user() -> UserState:
@@ -252,5 +286,6 @@ if __name__ == "__main__":
     test_pref_linear_regression()
     test_apply_all_integration()
     test_thickness_clamped()
+    test_pair_prior_color_sd_calibrated()
     print("=" * 50)
-    print("✅ bayesian.py: 全 9 テスト合格")
+    print("✅ bayesian.py: 全 10 テスト合格")

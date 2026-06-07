@@ -30,13 +30,26 @@ from models_v13 import (
 
 # ============ 観測ノイズ(設計書 §7.1 / §11) ============
 
+# ペア比較(色)の観測ノイズ較正 — 設計判断(2026-06)
+# 旧値 0.8 だと、ペア比較10問(うち色5問)を適用しただけで θ_color が
+#   σ²_N = 1/(1/100 + 5/0.8) = 0.16(SD≈0.40 Lab)
+# まで縮み、商品間隔(ΔE 数十)に対して「事前が過信」になっていた。これが能動学習
+# (EIG/Thompson)を exploit に退化させ、真値収束で一様ランダムにすら劣る原因だった。
+# 「ペア比較は10問しかなく質問設計も暫定 → 強くは信じない」という設計思想に合わせ、
+# 色ペア5問適用後に σ²_N≈4.0(SD≈2.0 Lab)へ緩めるよう σ²_obs を逆算する:
+#   σ²_N = 1/(1/100 + 5/σ²_obs) = 4.0  →  σ²_obs = 5 / (1/4 − 1/100) ≈ 20.83
+# (100 = θ_color 事前 base = pair_compare.SIGMA2_BASE、5 = 色ペア数)
+# ※ pair_worldview(→θ_pref、事前 τ²=1.0 でそもそも過信なし)と
+#   ar_view_like(AR 学習)は変えない。事前だけ緩め、AR で試着を重ねれば σ² は従来どおり縮む。
+_PAIR_COLOR_SIGMA2 = 5.0 / (1.0 / 4.0 - 1.0 / 100.0)  # ≈ 20.83(θ_color SD≈2.0 較正)
+
 SIGMA2_BY_SOURCE: Dict[ObservationSource, float] = {
     "pc_diagnosis": 100.0,         # PC は事前 σ²_color_0 として別経路で扱うため通常は使わない
-    "pair_color": 0.8,             # 強制ペア比較(色)
-    "pair_worldview": 0.8,         # 強制ペア比較(世界観)
+    "pair_color": _PAIR_COLOR_SIGMA2,  # 強制ペア比較(色)— θ_color SD≈2.0 に較正(上記)
+    "pair_worldview": 0.8,         # 強制ペア比較(世界観)— θ_pref 経路、据え置き
     "dialog": 1.5,                 # 対話確認
     "behavior": 1.0,               # 行動データ
-    "ar_view_like": 1.0,           # AR いいね
+    "ar_view_like": 1.0,           # AR いいね(変更しない)
     "ar_view_dislike": 1.0,        # AR 微妙
 }
 
