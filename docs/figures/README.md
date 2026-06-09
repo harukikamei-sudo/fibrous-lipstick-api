@@ -3,10 +3,11 @@
 本番ロジック(`bayesian` / `pair_compare` / `active_learning` / `recommend_v2`)を
 **実際に呼んで** 描いた、能動学習の効果を説明する図。再現可能。
 
-## 生成方法(1コマンドで2枚を再生成)
+## 生成方法
 
 ```bash
-python scripts/figures/make_experience_figures.py
+python scripts/figures/make_experience_figures.py   # 図1・図2(収束/追い越し)
+python scripts/figures/make_hit_rate_figure.py      # 図3(似合い率=体験の比較)
 ```
 
 - 乱数 seed は固定(`SEED` 定数)。仮想ユーザーの like 判定を `N_SEEDS` 回平均して曲線を均す。
@@ -19,9 +20,22 @@ python scripts/figures/make_experience_figures.py
 |---|---|
 | `al_convergence_experience.png` | 試着回数 N に対する「好みへの近さ」。**現行(好きそうな順=exploit)** vs **能動学習(EIG)**。試着を重ねるほど能動学習が現行を引き離す。 |
 | `al_eig_advantage.png` | 同じ2本を試着回数の現実的範囲(N≤12)で。能動学習が現行を **安定的に追い越す N** を明示(序盤は探索コストで一時的に遠回りする点も正直に注記)。 |
+| `hit_rate_comparison.png` | **似合い率(体験)の比較**。出したおすすめのうち「似合う色」だった割合。現行(exploit)・能動学習(EIG)・random の3本。**random が体験面で最下位**(似合わない色を出し続ける)であることを示し、「ランダムでいいのでは」に決着をつける。 |
 
-縦軸 = おすすめの中心(事後 μ_color)から真の好み TRUE_PREF までの ΔE2000。下ほど好みに近い。
+図1・図2の縦軸 = おすすめの中心(事後 μ_color)から真の好み TRUE_PREF までの ΔE2000。下ほど好みに近い。
 役員向けに縦軸の数値ラベルは伏せ、相対関係だけを見せる。
+
+### 図3(似合い率)の指標
+
+- ヒット率 = 「出したおすすめ N 件のうち、似合う色だった割合(累積)」(seed 平均)。
+- 「似合う」= ΔE2000(おすすめ色, その時点の θ_color.mu)が **de50=12 以下**
+  (仮値・Phase3 較正対象。`active_learning.DE50_DEFAULT` から取得、ハードコードしない)。
+- 選択は `active_learning.next_best` のブレンド(w=explore_weight)。exploit=w0 / EIG=w1。
+- 実測(seed 平均): exploit 100% / EIG(w1) 平均 81%(100%→69%)/ random 平均 43%(終始最下位)。
+  ※ 単発(per-step)では EIG が探索局面で一時 random を下回るが、第一定義の累積では終始上回る
+  (標準出力に per-step も開示)。
+- **示すこと**: random は真値への距離(学習効率)では有利でも、似合わない色を出すため
+  似合い率=ユーザー体験では最低 → 製品では採用不可。前2図の「random はなぜダメか」を体験で裏づける。
 
 ## 使っている本番ロジック(再実装していない)
 
