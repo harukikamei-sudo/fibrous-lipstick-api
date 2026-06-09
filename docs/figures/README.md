@@ -7,8 +7,9 @@
 
 ```bash
 python scripts/figures/make_experience_figures.py   # 図1(収束・追い越し統合)
-python scripts/figures/make_hit_rate_figure.py      # 図2(似合い率=体験の比較)
-python plot_explore_vs_fit.py                        # 図3(冒険度βと色exploitの関係)
+python scripts/figures/make_hit_rate_figure.py      # 図2(似合わない色を出した割合=体験)
+python scripts/figures/make_tradeoff_figure.py      # 図3(学ぶ×似合う トレードオフ:総括)
+python plot_explore_vs_fit.py                        # 図4(冒険度βと色exploitの関係)
 ```
 
 - 乱数 seed は固定(`SEED` 定数)。仮想ユーザーの like 判定を `N_SEEDS` 回平均して曲線を均す。
@@ -21,6 +22,7 @@ python plot_explore_vs_fit.py                        # 図3(冒険度βと色exp
 |---|---|
 | `al_convergence_experience.png` | 試着回数 N(0〜15)に対する「好みへの近さ」。**現行(好きそうな順=exploit)** vs **能動学習(EIG)**。**能動学習が現行を安定的に追い越す N** を明示し、序盤の探索コストと末尾の優位も1枚に集約(旧 al_convergence と al_eig を統合)。 |
 | `hit_rate_comparison.png` | **「似合わない色を出した割合」(体験)の比較**(低いほど良い)。出したおすすめのうち本当の好みから大きく外した色(ΔE2000>24=de50×2)だった割合。現行(exploit)・能動学習(EIG)・random の3本。**random が突出して高い=体験で最下位**(似合わない色を出し続ける)を示し、「ランダムでいいのでは」に決着をつける。 |
+| `tradeoff_learn_vs_fit.png` | **【総括】「学ぶ × 似合う」2軸トレードオフ**。横軸=学習(好みにどれだけ近づけたか)/縦軸=体験(似合う色を出せた割合)。**現行=似合うが学ばない(左上)/ random=学ぶが似合わない(右下)/ 能動学習=両立(理想の右上に最も近い)**。単一の図だと現行 or random が最良に見える誤解を、2軸を1枚に重ねて解消する総括図。 |
 | `explore_vs_fit.png` | **冒険度βと色exploitの関係**(色を無視しないことの可視化)。横軸=explore(0→max, β=β_max·explore)、縦軸=おすすめ上位の平均 ΔE2000(本番 vs 色exploitを外したα=0参考)。最大βでも本番ラインは ΔE≈3.5 で床打ちし、似合いしきい値(de50=12)の下に留まる=「冒険度を上げても色を無視しない」。`test_explore_does_not_ignore_color` が守る性質の可視化(生成元 `plot_explore_vs_fit.py` はリポジトリルート)。 |
 
 図1の縦軸 = おすすめの中心(事後 μ_color)から真の好み TRUE_PREF までの ΔE2000。下ほど好みに近い。
