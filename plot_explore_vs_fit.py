@@ -111,11 +111,18 @@ def _mean_top_de(km, mu_color, explore, alpha=None) -> Tuple[float, float]:
 def main() -> None:
     import matplotlib
     matplotlib.use("Agg")
-    try:
-        import japanize_matplotlib  # noqa: F401
-    except Exception:
-        pass
     import matplotlib.pyplot as plt
+    from matplotlib import font_manager as fm
+    # 役員向け: 日本語フォント(Hiragino 等)を設定。無ければ英語にフォールバック。
+    jp = False
+    _names = {f.name for f in fm.fontManager.ttflist}
+    for _cand in ("Hiragino Sans", "Hiragino Maru Gothic Pro", "YuGothic",
+                  "Arial Unicode MS", "AppleGothic"):
+        if _cand in _names:
+            matplotlib.rcParams["font.family"] = _cand
+            matplotlib.rcParams["axes.unicode_minus"] = False  # マイナス記号の豆腐回避
+            jp = True
+            break
 
     km = _load_km_table()
     # 本番既定の係数を req から取得(ハードコードしない)
@@ -153,31 +160,62 @@ def main() -> None:
     # 床(本番カーブの最悪値=最大 ΔE)= 最冒険でも似合い度はここまでしか崩れない。
     floor_val = max(prod_curve)
 
+    # 体験型ラベル(役員向け・日本語。フォント無しなら英語)
+    C_PROD, C_IGNORE, C_THRESH = "#e75480", "#9a9a9a", "#1f6fb0"
+    if jp:
+        lab_prod = "本番ロジック(冒険度を上げても色は尊重)"
+        lab_ignore = "参考:色を無視した場合"
+        lab_thresh = "似合うライン(これ以下なら似合う)"
+        title = "冒険度を上げても、似合う色から外れない"
+        xlabel = "冒険度(高いほど冒険的な提案)"
+        ylabel = "← 下ほど 似合う色をおすすめできている"
+        ann_prod = "最大に冒険しても\n似合うラインの下"
+        ann_ignore = "色を無視すると\n冒険するほど似合わなくなる"
+        caption = ("※ 本番 recommend_v2 を実際に呼んで計算(5つの好みパターン平均)。"
+                   "冒険度 = β ÷ β_max。")
+    else:
+        lab_prod = "production (color respected)"
+        lab_ignore = "reference: color ignored"
+        lab_thresh = "fitting line (suitable below this)"
+        title = "Raising adventurousness does NOT abandon suitable colors"
+        xlabel = "adventurousness (higher = bolder suggestions)"
+        ylabel = "lower = better at recommending suitable colors"
+        ann_prod = "even at max,\nstays below the line"
+        ann_ignore = "ignoring color gets\nworse as you explore"
+        caption = ("Production recommend_v2 actually invoked (avg over 5 preference "
+                   "patterns). adventurousness = beta / beta_max.")
+
+    ytop = max(noColor_curve) * 1.12
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(explores, prod_curve, color="#1a1a1a", lw=2.6, marker="o", ms=5,
-            label="production recommend_v2 (color exploit ON)")
-    ax.plot(explores, noColor_curve, color="#b03030", lw=2, ls="--", marker="s", ms=5,
-            label="reference: color exploit OFF (alpha=0) = color ignored")
+    ax.plot(explores, prod_curve, color=C_PROD, lw=3.0, marker="o", ms=5, label=lab_prod)
+    ax.plot(explores, noColor_curve, color=C_IGNORE, lw=2.0, ls=":", marker="s", ms=5,
+            label=lab_ignore)
     # しきい線: p(like)=0.5 となる ΔE=de50。これ以下なら「似合う色」。本番はずっと下側。
-    ax.axhline(FIT_THRESHOLD, color="#1f6fb0", ls="-.", lw=1.4,
-               label=f"fitting-color threshold (de50, p_like=0.5): dE = {FIT_THRESHOLD:.0f}")
-    ax.fill_between(explores, prod_curve, noColor_curve, color="#b03030", alpha=0.08)
-    ax.set_title("Raising explore (beta) does NOT make recommendations ignore color\n"
-                 f"y = mean dE2000 of top-{TOP_N} to mu_color (lower = better fit), "
-                 f"avg over {len(MU_COLORS)} mu_color")
-    ax.set_xlabel("explore (= theta_explore.mu)   |   beta = beta_max * explore")
-    ax.set_ylabel("mean dE2000 of top picks  (lower = closer to suited color)")
-    ax.grid(alpha=0.3)
-    ax.legend(fontsize=9, loc="center left")
-    secax = ax.twiny()
-    secax.set_xlim(ax.get_xlim())
-    secax.set_xticks(explores[::2])
-    secax.set_xticklabels([f"b={beta_max * e:.1f}" for e in explores[::2]], fontsize=8)
+    ax.axhline(FIT_THRESHOLD, color=C_THRESH, ls="-.", lw=1.4, label=lab_thresh)
+    ax.fill_between(explores, prod_curve, noColor_curve, color=C_IGNORE, alpha=0.10)
+    # 本番ラインの優位を注記(最大冒険でもしきい値の下に留まる)
+    ax.annotate(ann_prod, xy=(explores[-1], prod_curve[-1]),
+                xytext=(explores[-1] - 0.03, FIT_THRESHOLD * 0.5), ha="right",
+                fontsize=9, color="#b03b6b",
+                arrowprops=dict(arrowstyle="->", color="#b03b6b", lw=1.2))
+    ax.text(0.5, max(noColor_curve) * 0.9, ann_ignore, ha="center", fontsize=9,
+            color="#777")
+
+    ax.set_title(title, fontsize=15, fontweight="bold", pad=12)
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(0, ytop)
+    ax.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.tick_params(axis="y", left=False, labelleft=False)  # 役員向け:縦軸の数値は隠す
+    ax.grid(alpha=0.25, axis="x")
+    ax.legend(fontsize=10, loc="upper left", framealpha=0.95)
+    fig.text(0.5, 0.01, caption, ha="center", fontsize=9, color="#666")
 
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "docs", "figures", "explore_vs_fit.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0.05, 1, 1])
     fig.savefig(out, dpi=130)
     plt.close(fig)
     print(f"\nproduction: explore0={prod_curve[0]:.2f} -> explore1={prod_curve[-1]:.2f} "
