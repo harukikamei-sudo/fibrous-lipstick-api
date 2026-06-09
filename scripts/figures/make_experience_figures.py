@@ -5,9 +5,10 @@
 本番ロジック(bayesian / pair_compare / active_learning / recommend_v2)を実際に呼んで
 再現し、再現可能な形でリポジトリ(docs/figures)に残す。
 
-出力(2枚):
-  docs/figures/al_convergence_experience.png … 図1:能動学習なら少ない試着で好みに近づく
-  docs/figures/al_eig_advantage.png          … 図2:数回の試着で能動学習が現行を追い越す
+出力(1枚):
+  docs/figures/al_convergence_experience.png
+    … 現行(exploit) vs 能動学習(EIG)の収束。追い越し点・序盤の探索コスト・末尾の優位を
+      1枚に統合(旧 al_convergence と al_eig は同一の2曲線だったため統合)。
 
 【主張の範囲(重要・本番ΔE2000での再現結果に基づく)】
   当初スライドの「能動学習が最速(=ランダムにも勝つ)」は、本番 ΔE2000 で忠実再現すると
@@ -285,8 +286,7 @@ def _labels(jp: bool) -> Dict[str, str]:
             active="かしこく選ぶ(能動学習)",
             xlabel="試着した回数",
             ylabel="← 下ほど あなたの好みに近い",
-            title1="試着を重ねるほど、能動学習が現行より好みに近づく",
-            title2="数回の試着で、能動学習が現行を追い越す",
+            title="能動学習は、数回の試着で現行を追い越して好みに近づく",
             caption="※ 検証用シミュレーション(in silico)。仮想ユーザーの反応で試着学習を再現。"
                     "本番ロジック(ベイズ更新・期待情報利得)を実際に呼んで作図。",
             overtake="ここから先、能動学習が\n現行より好みに近い",
@@ -299,8 +299,7 @@ def _labels(jp: bool) -> Dict[str, str]:
         active="active learning (smart pick)",
         xlabel="number of try-ons",
         ylabel="lower = closer to your preference",
-        title1="As try-ons accumulate, active learning pulls closer to preference than current",
-        title2="Within a few try-ons, active learning overtakes the current method",
+        title="Active learning overtakes the current method within a few try-ons",
         caption="In-silico verification simulation; production logic (Bayesian update + "
                 "expected information gain) is actually invoked.",
         overtake="from here on, active learning\nis closer to preference",
@@ -315,7 +314,12 @@ C_ACTIVE = "#e75480"
 C_EXPLOIT = "#1a1a1a"
 
 
-def make_fig1(data: Dict, jp: bool) -> str:
+def make_figure(data: Dict, jp: bool, over: Optional[int]) -> str:
+    """統合図(1枚): 現行(exploit) vs 能動学習(EIG)の収束。
+
+    N=0〜N_MAX に、追い越し点・序盤の探索コスト・末尾の優位をすべて重ねる
+    (旧 al_convergence と al_eig は同一の2曲線なので1枚に統合)。
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -324,80 +328,47 @@ def make_fig1(data: Dict, jp: bool) -> str:
     c = data["curves"]
     ks = list(range(N_MAX + 1))
     ex, ac = c["exploit"], c["active_learning"]
+    ymax, ymin = max(max(ex), max(ac)), min(min(ex), min(ac))
+    span = ymax - ymin
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(11, 6.2))
     ax.plot(ks, ex, color=C_EXPLOIT, lw=2.4, marker="o", ms=4, label=L["exploit"])
     ax.plot(ks, ac, color=C_ACTIVE, lw=3.0, marker="o", ms=5, label=L["active"])
     # 能動学習が現行より近い区間を薄く塗る(優位の可視化)
     ax.fill_between(ks, ac, ex, where=[a < e for a, e in zip(ac, ex)],
                     color=C_ACTIVE, alpha=0.10, interpolate=True)
 
-    ax.set_title(L["title1"], fontsize=15, fontweight="bold", pad=12)
+    xticks = list(range(0, N_MAX + 1, 3))
+    if over is not None:
+        # 追い越し点(ここから先ずっと能動学習が現行を下回る)
+        ax.axvline(over, color="#3b7fd0", ls="--", lw=1.6)
+        ax.plot([over], [ac[over]], "o", color="#3b7fd0", ms=9, mec="white", zorder=5)
+        ax.annotate(L["overtake"], xy=(over, ac[over]),
+                    xytext=(over + 0.5, ymax - span * 0.10), ha="left",
+                    fontsize=10, color="#1f5d99", fontweight="bold",
+                    arrowprops=dict(arrowstyle="->", color="#3b7fd0", lw=1.4))
+        if over >= 3:  # 序盤の探索コストを正直に注記
+            ax.text(max(1, over // 2), ymax + span * 0.02, L["early"],
+                    ha="center", fontsize=9, color="#888")
+        xticks = sorted(set(xticks + [over]))
+    # 末尾の優位(現行よりどれだけ好みに近いか)
+    ax.annotate("", xy=(N_MAX, ac[-1]), xytext=(N_MAX, ex[-1]),
+                arrowprops=dict(arrowstyle="<->", color="#1f5d99", lw=1.4))
+    ax.text(N_MAX - 0.25, (ac[-1] + ex[-1]) / 2, L["advantage"], ha="right",
+            va="center", fontsize=10, color="#1f5d99", fontweight="bold")
+
+    ax.set_title(L["title"], fontsize=15, fontweight="bold", pad=12)
     ax.set_xlabel(L["xlabel"], fontsize=12)
     ax.set_ylabel(L["ylabel"], fontsize=12)
-    ax.set_xlim(-0.3, N_MAX + 0.6)
-    ax.set_xticks(range(0, N_MAX + 1, 3))
+    ax.set_xlim(-0.3, N_MAX + 0.7)
+    ax.set_xticks(xticks)
     ax.tick_params(axis="y", left=False, labelleft=False)  # 役員向け:縦軸の数値は隠す
     ax.grid(alpha=0.25, axis="x")
     ax.legend(fontsize=11, loc="upper right", framealpha=0.95)
-    # 末尾の優位を注記(現行よりどれだけ好みに近いか)
-    ax.annotate("", xy=(N_MAX, ac[-1]), xytext=(N_MAX, ex[-1]),
-                arrowprops=dict(arrowstyle="<->", color="#1f5d99", lw=1.4))
-    ax.text(N_MAX - 0.3, (ac[-1] + ex[-1]) / 2, L["advantage"], ha="right",
-            va="center", fontsize=10, color="#1f5d99", fontweight="bold")
     fig.text(0.5, 0.005, L["caption"], ha="center", fontsize=9, color="#666")
 
     fig.tight_layout(rect=[0, 0.04, 1, 1])
     out = os.path.join(OUT_DIR, "al_convergence_experience.png")
-    fig.savefig(out, dpi=140)
-    plt.close(fig)
-    return out
-
-
-def make_fig2(data: Dict, jp: bool, over: Optional[int]) -> str:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    L = _labels(jp)
-    c = data["curves"]
-    ks = list(range(N_FIG2 + 1))
-    ex, ac = c["exploit"][:N_FIG2 + 1], c["active_learning"][:N_FIG2 + 1]
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(ks, ex, color=C_EXPLOIT, lw=2.4, marker="o", ms=4, label=L["exploit"])
-    ax.plot(ks, ac, color=C_ACTIVE, lw=3.0, marker="o", ms=5, label=L["active"])
-    ax.fill_between(ks, ac, ex, where=[a < e for a, e in zip(ac, ex)],
-                    color=C_ACTIVE, alpha=0.10, interpolate=True)
-
-    ymax = max(max(ex), max(ac))
-    ymin = min(min(ex), min(ac))
-    if over is not None:
-        ax.axvline(over, color="#3b7fd0", ls="--", lw=1.6)
-        ax.plot([over], [ac[over]], "o", color="#3b7fd0", ms=9, mec="white", zorder=5)
-        ax.annotate(L["overtake"], xy=(over, ac[over]),
-                    xytext=(over + 0.4, ymax - (ymax - ymin) * 0.12), ha="left",
-                    fontsize=10, color="#1f5d99", fontweight="bold",
-                    arrowprops=dict(arrowstyle="->", color="#3b7fd0", lw=1.4))
-        # 序盤の探索コストを正直に注記
-        if over >= 3:
-            ax.text(max(1, over // 2), ymax - (ymax - ymin) * 0.04, L["early"],
-                    ha="center", fontsize=9, color="#888")
-        ax.set_xticks(sorted(set(list(range(0, N_FIG2 + 1, 3)) + [over])))
-    else:
-        ax.set_xticks(range(0, N_FIG2 + 1, 3))
-
-    ax.set_title(L["title2"], fontsize=15, fontweight="bold", pad=12)
-    ax.set_xlabel(L["xlabel"], fontsize=12)
-    ax.set_ylabel(L["ylabel"], fontsize=12)
-    ax.set_xlim(-0.3, N_FIG2 + 0.3)
-    ax.tick_params(axis="y", left=False, labelleft=False)
-    ax.grid(alpha=0.25, axis="x")
-    ax.legend(fontsize=11, loc="upper right", framealpha=0.95)
-    fig.text(0.5, 0.005, L["caption"], ha="center", fontsize=9, color="#666")
-
-    fig.tight_layout(rect=[0, 0.04, 1, 1])
-    out = os.path.join(OUT_DIR, "al_eig_advantage.png")
     fig.savefig(out, dpi=140)
     plt.close(fig)
     return out
@@ -452,10 +423,8 @@ def main() -> None:
     jp = _setup_font()
     if not jp:
         print("⚠ 日本語フォント未検出 → 英語ラベルで描画")
-    f1 = make_fig1(data, jp)
-    f2 = make_fig2(data, jp, over)
-    print(f"\n✅ 図1(収束): {f1}")
-    print(f"✅ 図2(追い越し): {f2}")
+    out = make_figure(data, jp, over)
+    print(f"\n✅ 図(収束・追い越し統合): {out}")
 
 
 if __name__ == "__main__":
