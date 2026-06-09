@@ -1,15 +1,22 @@
-"""ヒット率(似合う色を出せた割合)で random を正しく評価する図(役員/レビュー説明用)。
+"""「似合わない色を出した割合」で random を正しく評価する図(役員/レビュー説明用)。
 
 背景:真値への ΔE 収束だけ見ると random が有利に出る(製品化不可なのに)。だが本システムの
-目的は「ユーザーに"似合う色"をおすすめすること」。そこで実際の体験=「おすすめが似合って
-いたか」を指標にし、**random が体験面で最下位**になることを可視化する。
+目的は「ユーザーに"似合う色"をおすすめすること」。そこで実際の体験=「おすすめが大きく外して
+いなかったか」を指標にし、**random が体験面で最下位(似合わない色を出す率が突出)**である
+ことを可視化する。
+
+なぜ「似合う率(μ基準)」にしないか:exploit は定義上いつも予想 μ の最近傍を出すので
+μ基準だと 100% に張り付いて不自然。さらに真値基準の「似合う(≤de50)」は真値近傍商品が
+希少なため全戦略が低く団子になり差が出ない。そこで体験の失敗=**真の好みから大きく外した
+割合(低いほど良い)** で測ると、random の弱点(似合わない色を出す)が素直に出る:
+  外した = ΔE2000(おすすめ色, 真の好み TRUE_PREF) > MISS_THRESHOLD(= de50 × 2 = 24)
 
 図(docs/figures/hit_rate_comparison.png):
   横軸 = 試着回数 N(1〜12)
-  縦軸 = ヒット率 = その試着で出したおすすめが「似合う色」だった割合(seed 平均)
-         「似合う」= ΔE2000(おすすめ色, その時点の θ_color.mu) ≤ しきい値(de50=12)
-  線   = 現行(好きそうな順=exploit, w=0) / 能動学習(EIG, w=1) / random(参考)
-  期待 = exploit/EIG は高め、random は大きく下回る(似合わない色を出し続ける)。
+  縦軸 = 似合わない色を出した割合(累積・低いほど良い)
+  線   = 現行(exploit, w=0) / 能動学習(EIG, w=1) / random(参考)
+  結果 = random が突出して高い(似合わない色を出し続ける)= 体験で最下位。
+         exploit は低い(予想に一貫=大きくは外さない。ただし別図のとおり学習はしない)。
 
 本番コードを必ず経由(再実装しない):
   - 事前 θ_color : pair_compare 本番経路(較正後 SD≈2.0)  ← make_experience_figures と共用
@@ -56,9 +63,11 @@ import make_experience_figures as EXP        # noqa: E402
 SEED = EXP.SEED          # 体験版グラフと同一基点
 N_SEEDS = 120            # 仮想ユーザー like を平均する試行数
 N_MAX = 12               # 横軸の試着回数上限
-# 「似合う」しきい値 = p(like)=0.5 となる ΔE(de50)。ハードコードせず本番定数から取得。
+# 「似合う」境界 = p(like)=0.5 となる ΔE(de50)。ハードコードせず本番定数から取得。
 # ※ de50=12.0 は仮値(被験者データ未較正・Phase3 較正対象)。
 FIT_THRESHOLD = al.DE50_DEFAULT
+# 「大きく外した(似合わない色)」境界 = 似合い境界の2倍 = はっきり外れたと言える距離。
+MISS_THRESHOLD = 2.0 * FIT_THRESHOLD  # = 24
 # 図に載せる3戦略(w=explore_weight)+ 記録用に w=0.5 も stdout に出す。
 FIG_STRATEGIES = (("exploit", 0.0), ("active_learning", 1.0), ("random", None))
 EXTRA_W = 0.5            # stdout 記録用(現実的なブレンドの参考)
@@ -87,21 +96,22 @@ def _select_idx(kind: str, w, user, pool, rng: random.Random) -> int:
 
 def run_hit(kind: str, w, prior_user, cand_labs, true_de_cache,
             seed: int) -> List[float]:
-    """1試行: 各ステップで出したおすすめが「似合う色」だったか(1/0)を返す(長さ N_MAX)。
+    """1試行: 各ステップで出したおすすめが「似合わない色(大きく外し)」だったか(1/0)を返す。
 
-    似合う = ΔE2000(おすすめ色, おすすめ時点の θ_color.mu) ≤ FIT_THRESHOLD。
-    判定はおすすめを出した時点の信念 μ に対して行う(更新前=実際に推薦に使った μ)。
+    外した = ΔE2000(おすすめ色, **真の好み TRUE_PREF**) > MISS_THRESHOLD(= de50×2)。
+    ※ 体験の失敗を真値基準で測る。μ(システムの予想)基準にすると exploit が自分の予想の
+       近くしか出さないため 100% 張り付き(0%外し)になり不自然なので、真値で採点する。
     """
-    rng = random.Random(f"{seed}-hit-{kind}-{w}")
+    rng = random.Random(f"{seed}-miss-{kind}-{w}")
     user = prior_user                      # apply_observations は非破壊 → 共有可
     pool = list(cand_labs)
-    suit: List[float] = []
+    miss: List[float] = []
     for _ in range(N_MAX):
-        mu_c = user.theta_color.mu         # この μ でおすすめを出す
+        mu_c = user.theta_color.mu         # この μ でおすすめを出す(選択にのみ使用)
         idx = _select_idx(kind, w, user, pool, rng)
         pid, lab = pool.pop(idx)
-        # ヒット判定: 出したおすすめ色は、その時点の好み中心に対し「似合う」か
-        suit.append(1.0 if delta_e_2000(lab, mu_c) <= FIT_THRESHOLD else 0.0)
+        # 失敗判定: 出したおすすめ色が「本当の好み」から大きく外れていたか(真値との色差)
+        miss.append(1.0 if true_de_cache[pid] > MISS_THRESHOLD else 0.0)
         # 仮想ユーザーの反応(検証用)→ like のみ θ_color 更新(本番仕様)
         liked = EXP._sim_like(true_de_cache[pid], rng)
         obs = [Observation(
@@ -109,7 +119,7 @@ def run_hit(kind: str, w, prior_user, cand_labs, true_de_cache,
             product_id=pid, observed_lab=lab, y=1.0 if liked else -1.0,
         )]
         user, _ = bayesian.apply_observations(user, obs)
-    return suit
+    return miss
 
 
 def simulate() -> Dict:
@@ -122,11 +132,11 @@ def simulate() -> Dict:
     def per_step(kind, w):
         runs = [run_hit(kind, w, prior_user, cand_labs, true_de_cache, SEED + i)
                 for i in range(N_SEEDS)]
-        # 各ステップ単独で「似合うおすすめだった」割合 = seed 平均
+        # 各ステップ単独で「似合わない色を出した」割合 = seed 平均
         return [statistics.mean(r[n] for r in runs) for n in range(N_MAX)]
 
     def cumulative(ps):
-        # 累積ヒット率: 「出したおすすめ N 件のうち似合っていた割合」(=ユーザーの第一定義)
+        # 累積: 「出したおすすめ N 件のうち似合わない色だった割合」(低いほど良い)
         return [statistics.mean(ps[: n + 1]) for n in range(N_MAX)]
 
     ps = {name: per_step(name, w) for name, w in FIG_STRATEGIES}
@@ -156,27 +166,28 @@ def _labels(jp: bool) -> Dict[str, str]:
             active_learning="かしこく選ぶ(能動学習)",
             random="でたらめに選ぶ(参考)",
             xlabel="試着した回数",
-            ylabel="おすすめが似合っていた割合(累積・高いほど良い)",
-            title="おすすめの「似合い率」――でたらめ選びは体験が最低",
+            ylabel="似合わない色を出した割合(累積・低いほど良い)",
+            title="「似合わない色」を出した割合 ―― でたらめ選びが突出して最悪",
             caption=("※ 検証用シミュレーション(in silico)。本番ロジック(ベイズ更新・"
                      "期待情報利得・ブレンド選択)を実際に呼んで作図。"),
-            note=("「似合う」= 推薦色と好み中心の色差 ΔE2000 が 12 以下(de50, 仮値・Phase3較正対象)。\n"
-                  "でたらめ選びは真値への距離(学習効率)では有利だが、似合わない色を出すため\n"
-                  "似合い率=ユーザー体験では最低。ゆえに製品では採用不可。"),
+            note=("「似合わない」= 推薦色と本当の好みの色差 ΔE2000 が 24 超(似合い境界 de50=12 の2倍。"
+                  "de50 は仮値・Phase3較正対象)。\n"
+                  "でたらめ選びは真値への距離(学習効率)では有利だが、似合わない色を出す率が突出 → "
+                  "体験は最低。ゆえに製品では採用不可。"),
         )
     return dict(
         exploit="likely-liked only (current)",
         active_learning="active learning (smart pick)",
         random="random (reference)",
         xlabel="number of try-ons",
-        ylabel="cumulative share of recommendations that suited you (higher = better)",
-        title="Suitability hit-rate -- random gives the worst experience",
+        ylabel="cumulative share of unsuitable recommendations (lower = better)",
+        title="Share of clearly-unsuitable picks -- random is by far the worst",
         caption=("In-silico verification simulation; production logic (Bayesian update, "
                  "expected information gain, blended selection) is actually invoked."),
-        note=("'suitable' = dE2000(recommended, preference center) <= 12 "
-              "(de50, provisional, Phase-3 calibration target).\n"
+        note=("'unsuitable' = dE2000(recommended, true preference) > 24 (= 2x de50; de50=12 "
+              "provisional, Phase-3 calibration target).\n"
               "Random wins on distance-to-truth (learning efficiency) but shows unsuitable "
-              "colors, so its hit-rate / UX is the worst -> not productizable."),
+              "colors far more often -> worst UX -> not productizable."),
     )
 
 
@@ -189,23 +200,24 @@ def make_figure(data: Dict, jp: bool) -> str:
     c = data["curves"]
     ks = list(range(1, N_MAX + 1))  # N=1..12(N=0 はおすすめ未提示)
 
+    # でたらめ(random)= 主役(最悪を示す)→ 太い赤系。現行/能動学習は低く抑制。
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(ks, [v * 100 for v in c["exploit"]], color=C["exploit"], lw=2.4,
             marker="o", ms=4, label=L["exploit"])
     ax.plot(ks, [v * 100 for v in c["active_learning"]], color=C["active_learning"],
-            lw=3.0, marker="o", ms=5, label=L["active_learning"])
-    ax.plot(ks, [v * 100 for v in c["random"]], color=C["random"], lw=2.0, ls=":",
-            marker="s", ms=4, label=L["random"])
+            lw=2.6, marker="o", ms=5, label=L["active_learning"])
+    ax.plot(ks, [v * 100 for v in c["random"]], color="#c0392b", lw=3.0, ls=":",
+            marker="s", ms=6, label=L["random"])
 
+    ytop = max(max(c["random"]), max(c["active_learning"]), max(c["exploit"])) * 100
     ax.set_title(L["title"], fontsize=15, fontweight="bold", pad=12)
     ax.set_xlabel(L["xlabel"], fontsize=12)
     ax.set_ylabel(L["ylabel"], fontsize=11)
-    ax.set_ylim(-3, 103)
-    ax.set_yticks([0, 25, 50, 75, 100])
-    ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"])
+    ax.set_ylim(-0.5, max(8.0, ytop * 1.25))
+    ax.yaxis.set_major_formatter(lambda v, _pos: f"{v:.0f}%")
     ax.set_xticks(range(1, N_MAX + 1, 2))
     ax.grid(alpha=0.25)
-    ax.legend(fontsize=11, loc="center right", framealpha=0.95)
+    ax.legend(fontsize=11, loc="upper left", framealpha=0.95)
     fig.text(0.5, 0.085, L["note"], ha="center", fontsize=8.5, color="#444")
     fig.text(0.5, 0.005, L["caption"], ha="center", fontsize=9, color="#666")
 
@@ -217,9 +229,9 @@ def make_figure(data: Dict, jp: bool) -> str:
 
 def main() -> None:
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    print("=== ヒット率(似合い率)比較図(本番コード再現)===")
+    print("=== 「似合わない色を出した割合」比較図(本番コード再現)===")
     print(f"設定: SEED={SEED}, N_SEEDS={N_SEEDS}, N_MAX={N_MAX}, "
-          f"似合いしきい値 de50={FIT_THRESHOLD}")
+          f"似合い境界 de50={FIT_THRESHOLD} / 大きく外し境界={MISS_THRESHOLD:.0f}(=de50×2)")
     print("シミュレーション中...")
     data = simulate()
 
@@ -227,9 +239,8 @@ def main() -> None:
     print(f"\n事前 μ_color=({pm.L:.1f},{pm.a:.1f},{pm.b:.1f}) / "
           f"真値={data['true_id']} ズレ={data['gap']:.1f} ΔE")
     c = data["curves"]          # 累積(図の値)
-    ps = data["per_step"]       # 単発(正直に開示)
-    print(f"\n累積似合い率(=出したおすすめ N 件のうち ΔE {FIT_THRESHOLD:.0f} 以下だった割合)"
-          f" ※図に使う値:")
+    print(f"\n累積『似合わない色を出した割合』(出したおすすめ N 件のうち真値から "
+          f"ΔE {MISS_THRESHOLD:.0f} 超を出した割合)※図に使う値・低いほど良い:")
     print(f"{'N':>3} {'exploit':>9} {'EIG(w1)':>9} {'random':>9} {'(w0.5記録)':>11}")
     for n in range(N_MAX):
         print(f"{n+1:>3} {c['exploit'][n]*100:8.1f}% {c['active_learning'][n]*100:8.1f}% "
@@ -237,21 +248,15 @@ def main() -> None:
 
     def avg(curve):
         return statistics.mean(curve) * 100
-    print(f"\n平均似合い率: exploit={avg(c['exploit']):.1f}% / "
-          f"EIG(w1)={avg(c['active_learning']):.1f}% / random={avg(c['random']):.1f}% "
-          f"/ (参考 w0.5={avg(data['extra_w05']):.1f}%)")
-    rand_worst = (avg(c['random']) < avg(c['exploit'])
-                  and avg(c['random']) < avg(c['active_learning']))
-    print(f"→ random は体験(似合い率)で最下位{'(確認)' if rand_worst else '(要確認)'}。"
+    print(f"\n平均『似合わない色を出した割合』(低いほど良い): "
+          f"exploit={avg(c['exploit']):.1f}% / EIG(w1)={avg(c['active_learning']):.1f}% / "
+          f"random={avg(c['random']):.1f}% / (参考 w0.5={avg(data['extra_w05']):.1f}%)")
+    rand_worst = (avg(c['random']) > avg(c['exploit'])
+                  and avg(c['random']) > avg(c['active_learning']))
+    print(f"→ random は『似合わない色を出した割合』が突出{'(=体験で最下位・確認)' if rand_worst else '(要確認)'}。"
           f"真値ΔEでは最良でも、似合わない色を出すため製品化不可。")
-
-    # --- 正直な開示: 単発(per-step)では EIG が μ 大移動の局面で一時的に random を下回る ---
-    eig_ps = ps["active_learning"]
-    dip_n = min(range(N_MAX), key=lambda n: eig_ps[n])
-    print(f"\n[正直な注記] 単発(per-step)では EIG(w1)は探索局面 N={dip_n+1} で "
-          f"{eig_ps[dip_n]*100:.0f}% まで落ち、その点は random({ps['random'][dip_n]*100:.0f}%)を"
-          f"下回る。図は第一定義どおり累積で示す(=出したおすすめ全体での似合い率)。"
-          f"累積では EIG は終始 random を上回る。")
+    print("  ※ 現行(exploit)は低い=予想に一貫し大きくは外さない。ただし収束図のとおり"
+          "学習しない(好みに近づかない)ので、低いだけでは良い体験にならない。")
 
     jp = EXP._setup_font()
     if not jp:
