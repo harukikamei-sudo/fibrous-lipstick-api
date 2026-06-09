@@ -267,6 +267,37 @@ def test_rerank_explore_weight_default_uses_theta() -> None:
     print()
 
 
+def test_explore_does_not_ignore_color() -> None:
+    """最冒険(μ_explore=1 → β=5)でも色 exploit が相殺されず、色は無視されない。
+
+    回帰防止: α:β·w3 の比が崩れて「色を無視して世界観だけで選ぶ→似合わない色を出す」
+    事故(ランダムが製品化不可なのと同じ穴)に陥らないことを固定する(SIMULATOR_GUIDE §6.6 割り切り4)。
+    """
+    print("Test 13: 最冒険でも色は無視されない(似合わない色を出さない)")
+    user = _make_user(mu_thickness=1.0, mu_explore=1.0, mu_color=(50, 30, 15))
+    # μ_pref は軸0を強く好む
+    user.theta_pref = GaussianVec20(mu=[3.0] + [0.0] * 19, var=[1.0] * 20)
+    rows = [
+        # 色ピッタリ(ΔE≈0)だが世界観は μ_pref と直交(軸1)
+        _make_km_row("near_color_plainWV", LabValue(L=50, a=30, b=15),
+                     x20=[0.0, 1.0] + [0.0] * 18),
+        # 世界観は完璧一致(軸0)だが色は遠い(ΔE 大)
+        _make_km_row("far_color_perfectWV", LabValue(L=15, a=55, b=-10),
+                     x20=[1.0] + [0.0] * 19),
+    ]
+    # 通常推薦(rerank なし)= R_final = f - β·familiarity。β=5(最冒険)。
+    res = recommend_v2(RecommendV2Request(user=user, km_table=rows, top_n=2))
+    by = {r.product_id: r for r in res.results}
+    near, far = by["near_color_plainWV"], by["far_color_perfectWV"]
+    # 遠い色は世界観完璧でも、似合う色(近い)に負ける = 色 exploit が支配
+    assert res.results[0].product_id == "near_color_plainWV", \
+        f"色が無視され遠い色が勝った: TOP1={res.results[0].product_id}"
+    assert near.r_final > far.r_final
+    print(f"  ✓ 最冒険でも near(ΔE={near.delta_e_to_color:.1f}, R={near.r_final:.1f}) "
+          f"> far(ΔE={far.delta_e_to_color:.1f}, pref完璧, R={far.r_final:.1f})")
+    print()
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -280,5 +311,6 @@ if __name__ == "__main__":
     test_rerank_backward_compat()
     test_rerank_w0_matches_default_order()
     test_rerank_explore_weight_default_uses_theta()
+    test_explore_does_not_ignore_color()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 12 テスト合格")
+    print("✅ recommend_v2.py: 全 13 テスト合格")
