@@ -8,6 +8,7 @@
 ```bash
 python scripts/figures/make_experience_figures.py   # 図1・図2(収束/追い越し)
 python scripts/figures/make_hit_rate_figure.py      # 図3(似合い率=体験の比較)
+python plot_explore_vs_fit.py                        # 図4(冒険度βと色exploitの関係)
 ```
 
 - 乱数 seed は固定(`SEED` 定数)。仮想ユーザーの like 判定を `N_SEEDS` 回平均して曲線を均す。
@@ -21,6 +22,7 @@ python scripts/figures/make_hit_rate_figure.py      # 図3(似合い率=体験�
 | `al_convergence_experience.png` | 試着回数 N に対する「好みへの近さ」。**現行(好きそうな順=exploit)** vs **能動学習(EIG)**。試着を重ねるほど能動学習が現行を引き離す。 |
 | `al_eig_advantage.png` | 同じ2本を試着回数の現実的範囲(N≤12)で。能動学習が現行を **安定的に追い越す N** を明示(序盤は探索コストで一時的に遠回りする点も正直に注記)。 |
 | `hit_rate_comparison.png` | **似合い率(体験)の比較**。出したおすすめのうち「似合う色」だった割合。現行(exploit)・能動学習(EIG)・random の3本。**random が体験面で最下位**(似合わない色を出し続ける)であることを示し、「ランダムでいいのでは」に決着をつける。 |
+| `explore_vs_fit.png` | **冒険度βと色exploitの関係**(色を無視しないことの可視化)。横軸=explore(0→max, β=β_max·explore)、縦軸=おすすめ上位の平均 ΔE2000(本番 vs 色exploitを外したα=0参考)。最大βでも本番ラインは ΔE≈3.5 で床打ちし、似合いしきい値(de50=12)の下に留まる=「冒険度を上げても色を無視しない」。`test_explore_does_not_ignore_color` が守る性質の可視化(生成元 `plot_explore_vs_fit.py` はリポジトリルート)。 |
 
 図1・図2の縦軸 = おすすめの中心(事後 μ_color)から真の好み TRUE_PREF までの ΔE2000。下ほど好みに近い。
 役員向けに縦軸の数値ラベルは伏せ、相対関係だけを見せる。
