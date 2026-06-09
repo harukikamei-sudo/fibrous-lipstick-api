@@ -9,6 +9,9 @@ thumbnails/
 *.xlsx
 .DS_Store
 
+# ダウンロード画像が紛れ込まないよう webp はリポジトリ全体で追跡しない
+*.webp
+
 # ログ・スナップショット
 *.log
 *.csv.phase1plus
