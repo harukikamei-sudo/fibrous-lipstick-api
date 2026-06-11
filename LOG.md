@@ -750,6 +750,117 @@ push が拒否された。`gh auth refresh -h github.com -s workflow` で 1 回�
 
 ---
 
+## エポック 12: DB 連携 + 重依存の遅延 import(2026-06-02)
+
+### 目的
+Kawano さんの AR フロント `color-capture`(Next.js + MediaPipe)受領に合わせ、UserState を
+Spreadsheet + GAS で永続化する経路を用意する。
+
+### やったこと
+- `catalog_x20.py` を **DB の20軸定義に統一**(hue/saturation/brightness/pigmentation +
+  lines由来11軸 + 世界観5)。DB の users θ_pref 列順を source of truth に。
+- `gas_webapp.gs`(?action=load/save/observe)、`DB_V13_COLUMNS.md`、`sync_db_products.py`
+  → `db_products_filled.csv`(140件)。詳細は HANDOFF.md の 2026-06-02 セクション。
+- **app.py の重依存(extract_lab/estimate_s = scipy/sklearn)を遅延 import 化**。macOS の
+  Gatekeeper が .so を初回スキャンする 30〜85 秒で起動/テストが固まって見える問題への対処。
+  app 起動時に読まず、エンドポイント初回呼び出し時に読むことで通常操作を軽くした。
+
+---
+
+## エポック 13: 個人化学習層のハードニング + 能動学習 rerank(2026-06-05〜07)
+
+### 背景
+v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦の「正しさ」を詰める作業で
+3つの欠陥/未配線を発見・修正した。
+
+### 修正1: dislike が θ_color を壊していた(635e004)
+- 旧実装は `ar_view_dislike` の observed_lab も θ_color の平均更新に通していた → 嫌った色の
+  方向へ μ_color が引き寄せられ、さらに σ² が縮んで「偽の確信」が生まれていた。
+- 修正: `update_theta_color` の対象から ar_view_dislike を除外(肯定観測のみ畳む)。dislike を
+  反発させたいなら別の repulsive モデルが要るが MVP 範囲外。θ_thickness が like のみ拾う思想と統一。
+- 「dislike では θ_color が動かない」を回帰テスト化。
+
+### 修正2: θ_explore が一度も更新されていなかった(635e004)
+- 設計上 is_serendipity 観測の like/dislike で θ_explore を動かすはずが、is_serendipity を誰も
+  立てていなかった。
+- 修正: `recommend_v2._flag_serendipity` で返却 TOP-N の中央値分割(ΔE>median かつ
+  familiarity<median =「遠い×未知」象限)にフラグを立てる。β 非依存なので explore 事前が低くても
+  立ち、ユーザー反応 → θ_explore が動ける。「最低1件・全部ではない」をテストで担保。
+
+### 修正3: 能動学習(EIG)は新エンドポイントでなく rerank で統合(a809955)
+- 最初 `/v13/next_best` を新設したが「新エンドポイントを作らず既存 /v13/recommend に
+  パラメータ追加」に方針変更(後方互換最優先)。
+- `RecommendV2Request` に `rerank=False` / `explore_weight` を追加。rerank=False は従来挙動を
+  完全維持。rerank=True のときだけ `active_learning.next_best` で R_final と EIG をブレンド再ランク。
+  EIG = P(like)·KL(like時の事後‖事前)、w = clamp(explore_weight or θ_explore.mu)。
+
+### 較正: 事前 θ_color の過信を緩める(SD≈0.40 → 2.0、a0c42c4)
+- 問題: ペア比較(色5問)適用後に θ_color が σ²≈0.16(SD≈0.40 Lab)まで縮み、商品間隔
+  (ΔE 数十)に対して過信。これが探索系を exploit に退化させ、真値収束で一様ランダムにすら劣る原因。
+- 修正: pair_color の σ²_obs を逆算で ≈20.83 に上げ、色5問適用後 σ²_N≈4.0(SD≈2.0)に緩める
+  (`σ²_obs = 5/(1/4 − 1/100)`)。pair_worldview と ar_view_like は不変=事前だけ緩め、AR で学べば縮む。
+- 不変条件 `σ²_N = 1/(1/σ²_0 + N/σ²_obs)` を**式として**テスト(マジックナンバー固定でない)。
+
+### 色 ΔE の3用途マップ(fb270d8、詳細 SIMULATOR_GUIDE §割り切り4)
+- 同じ ΔE2000(eff_lab, μ_color) が3か所で**役割分担**(重複でない): f_score の −α·ΔE=当てる
+  / familiarity の w3·1/(1+ΔE) を β で減点=あえて外す / p_like の sigmoid(de50−ΔE)=学ぶ。
+- 注意: R_final 内で +α と −β·w3 が部分相殺 → 比次第で冒険好きが「色を無視」する事故の穴。
+  回帰テスト `test_explore_does_not_ignore_color`(μ_explore=1 でも色は無視されない)で防御。
+
+---
+
+## エポック 14: ピッチ用 in-silico 図 と「能動学習の正直な評価」(2026-06-09)
+
+### 目的
+役員/レビュー向けに、能動学習の効果を**本番コードを実際に呼んで**可視化し、再現可能な形で
+`docs/figures/` に残す(`scripts/figures/*.py` + ルートの `plot_explore_vs_fit.py`)。
+
+### ★最重要の発見:スライドの「能動学習が最速」は本番 ΔE2000 では成立しない
+- 旧スライド(簡易版・numpy/ユークリッド)は「EIG は試着7回以内なら random にも勝つ」と主張。
+  本番 `delta_e_2000`(CIEDE2000)+ 較正後事前で忠実再現すると **不成立**。
+- 単一 TRUE_PREF への収束では **random が終始最良**(N=15 で random 12.1 < EIG 13.4 <
+  exploit 15.2 ΔE)。理由: **EIG は KL(信念の移動量)を最大化する acquisition であって
+  「真値への距離最小化」とは別目的**。dislike が θ_color を更新しない仕様も相まって、純粋な
+  真値収束では一様ランダム+like フィルタ(=真値領域への棄却サンプリング)に劣りうる(既知現象)。
+- **対応:収束図は「現行(exploit) vs 能動学習(EIG)」の2本に絞り**、主張を「能動学習は現行より
+  少ない試着で好みに近づく」に限定(random は記録のみ・図に載せない)。今後この図で
+  「能動学習が(randomを含め)最速」とは主張しないこと。
+
+### 体験指標の試行錯誤 → 「似合わない色を出した割合」に着地
+- 「random は体験で最下位」を示す図で指標を3段階変えた:
+  1. **μ基準**(推薦 vs システムの予想 μ): random 43% 最下位 ✓ だが exploit は定義上 μ 最近傍を
+     出すので **100% 張り付き=自己採点で不自然**。
+  2. **真値基準 ≤de50**: exploit が100%でなくなる代わり、真値近傍商品が希少で全戦略 ~15% 団子、
+     random が最高になり逆転 ✗。
+  3. **採用 = 真の好みから大きく外した割合(ΔE>de50×2=24、低いほど良い)**: random 17.5% 突出
+     (最悪)/ EIG 3.6% / exploit 0%。100% の線が消え random の弱点が素直に出る。
+- 教訓: exploit は決定論的最近傍戦略 → どの指標でも必ず端(0% か 100%)に振れる。「現行を100%に
+  しない」には exploit の端が下端になる指標を選ぶ。
+
+### 単軸の罠 → 2軸トレードオフ総括図
+- 収束図(学習軸)だけ→ random 最良に見える / ヒット率図(体験軸)だけ→ 現行 exploit 最良に見える
+  → どちらの単軸でも「能動学習が要る」が伝わらない(現行 or random で良く見える)。
+- **`tradeoff_learn_vs_fit.png`**: 横軸=学習(好みに近づけた量)、縦軸=体験(似合う色を出せた割合)。
+  現行=似合うが学ばない(左上)/ random=学ぶが似合わない(右下)/ **能動学習=両立(理想の右上に最も近い)**。
+  能動学習を採る理由をこの1枚で説明できる。**単軸の図は単独で出さず必ず総括図とセット**にする。
+
+### 作り方の規約(再現性・正直さ)
+- 本番コード必須: 事前=pair_compare(較正後)/ 更新=apply_observations(like のみ)/ EIG・選択=
+  active_learning / 距離=recommend_v2.delta_e_2000。**唯一のシミュは仮想ユーザーの like 判定**
+  (真値→ロジスティック、検証専用と各スクリプトに明記)。seed 固定・N_SEEDS 平均で再現可能。
+- 役員向け: 日本語ラベル(Hiragino Sans。japanize_matplotlib は未導入なので font_manager で直指定)、
+  縦軸の数値は伏せ相対関係だけ見せる。in silico である旨をキャプションに明記。
+- **HF Spaces はバイナリ(PNG)push を拒否**(Xet 必須)。図は GitHub(origin)のみに置く。
+  HF Space=API はこれらに非依存で機能的に最新(エポック8の model.png と同じ判断)。
+
+### 図一覧(docs/figures/、各 1コマンドで再生成)
+- `al_convergence_experience.png` — 収束・追い越し(現行 vs 能動学習)
+- `hit_rate_comparison.png` — 似合わない色を出した割合(random 突出最下位)
+- `tradeoff_learn_vs_fit.png` — 【総括】学ぶ×似合う 2軸
+- `explore_vs_fit.png` — 冒険度β と色 exploit(色を無視しない)
+
+---
+
 ## 残課題(後続のため)
 
 1. **`healthy_pink × イエベ秋 = 0.60`** が唯一の acceptable。境界ケース、深追いせず。

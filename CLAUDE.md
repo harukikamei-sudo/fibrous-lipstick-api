@@ -104,7 +104,17 @@ fibrous-lipstick-api/
 ├── gas_webapp.gs       ★GAS Web App。users/observations 読み書き(?action=load/save/observe)
 ├── DB_V13_COLUMNS.md   ★DB に追加する v1.3 列の手順(users 5列 + observations 6列)
 ├── sync_db_products.py ★products_with_lab.csv → DB products 形式 CSV 生成
-└── db_products_filled.csv  DB products シートに貼る Lab+9軸(140件、生成物)
+├── db_products_filled.csv  DB products シートに貼る Lab+9軸(140件、生成物)
+│
+├── ─── ピッチ用 in-silico 図(2026-06-09、役員/レビュー説明用)───
+├── bayes_plot.py       ベイズ更新の統計可視化(personas_cli の plot コマンド実体)
+├── plot_explore_vs_fit.py  ★冒険度βと色exploitの関係図(色を無視しない)→ docs/figures/
+├── scripts/figures/
+│   ├── make_experience_figures.py  ★収束・追い越し統合図(現行 vs 能動学習)
+│   ├── make_hit_rate_figure.py     ★似合わない色を出した割合(random 突出最下位)
+│   └── make_tradeoff_figure.py     ★【総括】学ぶ×似合う 2軸トレードオフ
+└── docs/figures/       ★生成図 PNG 4枚 + README.md(各図の意味・生成方法・正直な注記)
+                        ※本番コードを実際に呼んで生成・seed固定で再現可能。GitHub のみ(HFはバイナリ拒否)
 ```
 
 ## 重要な設計判断
@@ -330,6 +340,8 @@ products_with_lab.csv からロード。
 | **v1.3-G** | **エンドポイント単体テスト(`test_v13_endpoints.py`)** | ✅ 11件(正常 + 422 + dislike + filter + serendipity) |
 | **v1.3-H** | **Streamlit 実写唇合成統合** | ✅ サイドバー顔写真→マスク自動抽出→TOP-N に composite_lip |
 | **v1.3-I** | **GitHub Actions CI** | ✅ push/PR で Python 3.11/3.12 × 6 テスト群を自動実行 |
+| **v1.3-J** | **個人化層ハードニング**(dislike修正 / θ_explore配線 / EIG rerank / σ²較正) | ✅ LOG エポック13。後方互換維持・回帰テスト追加 |
+| **v1.3-K** | **ピッチ用 in-silico 図**(docs/figures 4枚 + 生成スクリプト) | ✅ LOG エポック14。本番コード経由・再現可能。⚠️「能動学習が最速」は本番では不成立と判明→図を再構成 |
 
 ## v1.3 Kawanoさん interface(2026-05-29 実装)
 

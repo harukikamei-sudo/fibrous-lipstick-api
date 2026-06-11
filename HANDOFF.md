@@ -3,9 +3,31 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-06-02 (Opus 4.7 / 1M context) — **DB 連携 + Kawano AR フロント疎通確認**
-全テスト: 32 件合格(bayesian 8, recommend_v2 7, v13_endpoints 11, v13_flow E2E 6)
-CI: GitHub Actions で Python 3.11/3.12 を自動回転
+最終更新: 2026-06-09 (Opus 4.8 / 1M context) — **個人化層ハードニング + 能動学習 rerank + ピッチ図**
+全テスト: 個人化層 47 件(bayesian 10 / recommend_v2 13 / active_learning 8 / v13_endpoints 16)
++ v13_flow E2E + 物理系(km 8 / lab 3)。CI: GitHub Actions で Python 3.11/3.12 を自動回転
+
+## 2026-06-05〜09 セッション(個人化層ハードニング + ピッチ図)
+
+詳細は [LOG.md](LOG.md) エポック 13・14。要点:
+
+- **ベイズ更新の3欠陥を修正**(LOG エポック13):
+  1. dislike が θ_color を壊していた → `update_theta_color` から ar_view_dislike を除外
+  2. θ_explore が未更新だった → `recommend_v2._flag_serendipity`(TOP-N 中央値分割)で配線
+  3. 能動学習(EIG)を**新エンドポイントでなく** `/v13/recommend` の `rerank`/`explore_weight`
+     パラメータで統合(rerank=False は従来挙動を完全維持=後方互換)
+- **事前 θ_color の過信を較正**: pair_color の σ²_obs を ≈20.83 に上げ SD≈0.40→2.0
+  (`bayesian.SIGMA2_BY_SOURCE["pair_color"]`)。式として回帰テスト化。
+- **色 ΔE の3用途マップ**を SIMULATOR_GUIDE §割り切り4 に明記 + 回帰テスト
+  `test_explore_does_not_ignore_color`(冒険好きでも色を無視しない)。
+- **ピッチ用 in-silico 図**(`docs/figures/`、生成は `scripts/figures/*.py` + ルート
+  `plot_explore_vs_fit.py`)を本番コード経由で作成。⚠️ **重要な正直な発見**: 旧スライドの
+  「能動学習が最速(7回以内 random にも勝つ)」は本番 ΔE2000 では**不成立**(random が真値収束では
+  終始最良。EIG は KL=信念移動の最大化で真値最小化とは別目的)。→ 図は「現行 exploit vs
+  能動学習 EIG」+ 体験軸(似合わない色を出す率は random が突出)+ **2軸トレードオフ総括図**で
+  「現行=学ばない / random=似合わない / 能動学習=両立」を示す構成に。詳細 LOG エポック14。
+- 図(PNG)は **GitHub(origin)のみ**。HF Spaces はバイナリ push を拒否(Xet 必須)、かつ
+  HF Space=API はこれらに非依存で機能的に最新。
 
 ## 2026-06-02 セッションの追加(DB 連携)
 
