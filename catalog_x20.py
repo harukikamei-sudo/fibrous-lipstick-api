@@ -62,6 +62,32 @@ AXIS_NAMES: List[str] = [
 ]
 assert len(AXIS_NAMES) == 20
 
+# 推薦理由(reasons)のフロント表示用ラベル(A2)。conciergeScript.ts と揃えること。
+# Mina に伝わる平易な言葉に寄せる(形態名より質感の言葉)。
+AXIS_LABELS_JA: Dict[str, str] = {
+    "hue": "色み",
+    "saturation": "鮮やかさ",
+    "brightness": "明るさ",
+    "pigmentation": "発色",
+    "glossy": "ツヤ",
+    "moisture_finish": "うるおい",
+    "sheer": "透け感",
+    "velvet": "マット感",
+    "blur": "ふんわり感",
+    "is_tint": "ティント",
+    "is_balm": "バーム",
+    "is_gloss": "グロス",
+    "moisturizing": "保湿",
+    "longlasting": "落ちにくさ",
+    "transfer_resistance": "色移りしにくさ",
+    "girly": "ガーリー",
+    "makeup_intensity": "メイク感",
+    "konare": "こなれ感",
+    "sweetness": "甘さ",
+    "korean": "韓国っぽさ",
+}
+assert set(AXIS_LABELS_JA) == set(AXIS_NAMES)
+
 # lines シート由来の 11 軸(line_id でルックアップ)
 LINE_AXES = [
     "glossy", "moisture_finish", "sheer", "velvet", "blur",

@@ -583,6 +583,34 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/recommend \
 - `beta_max`: セレンディピティ最大係数(既定 5.0)
 - `familiarity_weights`: [w1, w2, w3](既定 [4, 3, 2])
 
+### `reasons`(推薦理由・A2)
+
+各 `results[*]` に推薦理由の構造化データ `reasons` が付く(**文章化はフロントの責務**。
+API は数値・ラベル・来歴のみ返す)。読まない既存クライアントは無視できる(後方互換)。
+
+```json
+"reasons": {
+  "color_percentile": 0.92,   // 色の似合い順位率(1=プール内で最も似合う)
+  "pref_percentile": 0.78,    // 好み一致の順位率(1=最も好みに一致)
+  "scene_match": false,       // シーン選択軸への合致(A1 配線後に有効。現状 false 固定)
+  "top_axes": [               // 好み起点:正寄与かつ確信のある軸(最大2)
+    {"axis": "sheer", "label": "透け感", "contribution": 0.41, "evidence": []}
+  ],
+  "product_traits": [         // 商品起点:値が突出した軸(is_系除く・top_axes と重複除く、最大2)
+    {"axis": "blur", "label": "ふんわり感"}
+  ]
+}
+```
+
+- **percentile はパーセンタイル方式**(候補プール内の順位率・絶対閾値なし=`is_serendipity` と
+  同じ自己校正の哲学)。スコア計算(`r_final`)には一切影響しない派生指標。
+- **top_axes** は `μ_pref[k]·x20[k] > 0` かつ `theta_pref.var[k] ≤ RHO·TAU2_PREF`(RHO=0.5、
+  「確信のある軸」)のみ。is_系バイナリ軸とその連続プロキシ(is_gloss↔glossy 等)が拮抗する
+  場合は連続軸を優先表示(表示規則のみ・スコア無影響)。※ RHO はフロント発話トリガーと同値共有。
+- **evidence**(その軸の事後分散を最も縮めた観測の pair_id)は bayesian 更新ループの計装が
+  必要なため**現状は空配列**(別途配線)。
+- 順位の同点は商品ID昇順で安定化済み(同一入力 → 同一 TOP-N=決定性)。
+
 ---
 
 ## v1.3-④ POST /v13/update_user

@@ -23,9 +23,13 @@ from typing import List, Sequence
 import numpy as np
 from skimage import color as skcolor
 
+from catalog_x20 import AXIS_LABELS_JA, AXIS_NAMES
 from models_v13 import (
     KMTableRow,
     LabValue,
+    ProductTrait,
+    ReasonAxis,
+    RecommendReasons,
     RecommendV2Item,
     RecommendV2Request,
     RecommendV2Response,
@@ -125,6 +129,120 @@ def beta_from_explore(mu_explore: float, beta_max: float) -> float:
     return beta_max * max(0.0, min(1.0, mu_explore))
 
 
+# ============ A2: 推薦理由(reasons)の構築 ============
+# RHO: top_axes は「事後分散 var ≤ RHO·TAU2_PREF の確信ある軸」だけ喋る。
+# ※ フロント F3(conciergeScript.ts)の発話トリガー RHO と同値を共有すること
+#   (型生成に乗らないので .env / 定数ファイルで同期し、参照先をコメントで明記)。
+RHO_CONFIDENT = 0.5
+TAU2_PREF = 1.0          # = pair_compare.TAU2_PREF(A1 で constants へ一元化予定)
+# is_系バイナリ形態軸と、それに相関する連続軸(共線性)。表示のタイブレークにのみ使う。
+IS_BINARY_AXES = {"is_tint", "is_balm", "is_gloss"}
+CONTINUOUS_PROXY = {"is_gloss": "glossy", "is_tint": "longlasting", "is_balm": "moisturizing"}
+TIEBREAK_MARGIN = 0.20   # 拮抗判定(差が20%以内なら連続軸を優先表示)。スコアには無影響。
+
+
+def _percentile_high_good(values: Sequence[float], x: float) -> float:
+    """x が values 内でどれだけ上位か(高い値=高パーセンタイル、[0,1])。
+
+    タイは中間順位、要素1件は 1.0。絶対閾値を持たない「順位率」
+    (_flag_serendipity と同じ自己校正の哲学)。
+    """
+    n = len(values)
+    if n <= 1:
+        return 1.0
+    less = sum(1 for v in values if v < x)
+    equal = sum(1 for v in values if v == x)
+    return (less + 0.5 * (equal - 1)) / (n - 1)
+
+
+def _top_axes_with_tiebreak(eligible: List[tuple]) -> List[tuple]:
+    """eligible=[(axis, contribution)](contribution 降順)に共線性タイブレークを適用。
+
+    is_系バイナリ軸とその連続プロキシ(is_gloss↔glossy 等)の寄与が TIEBREAK_MARGIN
+    以内で拮抗するとき、表示は連続軸を優先する(Mina に伝わるのは形態名より質感の言葉)。
+    これは表示選択の規則でありスコア計算には一切影響しない。
+    """
+    contrib_by_axis = dict(eligible)
+    out: List[tuple] = []
+    used: set = set()
+    for axis, c in eligible:
+        if axis in used:
+            continue
+        proxy = CONTINUOUS_PROXY.get(axis)
+        if proxy is not None and proxy not in used and proxy in contrib_by_axis:
+            pc = contrib_by_axis[proxy]
+            denom = max(abs(c), abs(pc), 1e-9)
+            if abs(c - pc) / denom <= TIEBREAK_MARGIN:
+                out.append((proxy, pc))
+                used.add(proxy)
+                used.add(axis)
+                continue
+        out.append((axis, c))
+        used.add(axis)
+    return out
+
+
+def _build_reasons(
+    x20: Sequence[float], mu_pref: Sequence[float], pref_var: Sequence[float],
+    dE: float, pref_contrib: float,
+    pool_dEs: Sequence[float], pool_pref_contribs: Sequence[float],
+) -> RecommendReasons:
+    """1商品分の reasons を構築(数値・ラベル・来歴のみ。文章化はフロント)。"""
+    color_pct = _percentile_high_good([-d for d in pool_dEs], -dE)
+    pref_pct = _percentile_high_good(pool_pref_contribs, pref_contrib)
+
+    # top_axes: 正寄与かつ確信のある軸のみ。共線性タイブレークを適用して最大2。
+    eligible = [
+        (AXIS_NAMES[k], mu_pref[k] * x20[k])
+        for k in range(20)
+        if mu_pref[k] * x20[k] > 0 and pref_var[k] <= RHO_CONFIDENT * TAU2_PREF
+    ]
+    eligible.sort(key=lambda t: (-t[1], t[0]))
+    top_axes = [
+        ReasonAxis(axis=a, label=AXIS_LABELS_JA[a], contribution=round(c, 4), evidence=[])
+        for a, c in _top_axes_with_tiebreak(eligible)[:2]
+    ]
+
+    # product_traits: 商品側で値が突出した軸。is_系除く・top_axes と重複除く。最大2。
+    chosen = {ra.axis for ra in top_axes}
+    traits = [
+        (AXIS_NAMES[k], x20[k])
+        for k in range(20)
+        if AXIS_NAMES[k] not in IS_BINARY_AXES and AXIS_NAMES[k] not in chosen and x20[k] > 0
+    ]
+    traits.sort(key=lambda t: (-t[1], t[0]))
+    product_traits = [ProductTrait(axis=a, label=AXIS_LABELS_JA[a]) for a, _ in traits[:2]]
+
+    return RecommendReasons(
+        color_percentile=round(color_pct, 4),
+        pref_percentile=round(pref_pct, 4),
+        scene_match=False,  # A1 の I_dialog 配線で生きる。A2 時点では false 固定。
+        top_axes=top_axes,
+        product_traits=product_traits,
+    )
+
+
+def _attach_reasons(
+    top: List[RecommendV2Item], req: RecommendV2Request, all_items: List[RecommendV2Item],
+    mu_pref: Sequence[float], pref_var: Sequence[float], beta: float,
+) -> None:
+    """返却 TOP-N に reasons を付与。パーセンタイルは候補プール(全 km_table)基準。"""
+    w2 = req.familiarity_weights[1]
+    x20_by_id = {row.product_id: list(row.x20) for row in req.km_table}
+
+    def _pref_contrib(it: RecommendV2Item) -> float:
+        # pref_contrib = μ_pref·x20 − β·w2·cos(μ_pref, x20)(意味での再グルーピング)
+        return it.pref_match - beta * w2 * cosine_similarity(mu_pref, x20_by_id[it.product_id])
+
+    pool_dEs = [it.delta_e_to_color for it in all_items]
+    pool_pref_contribs = [_pref_contrib(it) for it in all_items]
+    for it in top:
+        it.reasons = _build_reasons(
+            x20_by_id[it.product_id], mu_pref, pref_var,
+            it.delta_e_to_color, _pref_contrib(it), pool_dEs, pool_pref_contribs,
+        )
+
+
 # ============ 推奨本体 ============
 
 def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
@@ -158,12 +276,14 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
             image_url=row.image_url,
         ))
 
-    items.sort(key=lambda it: it.r_final, reverse=True)
+    # 決定性(A2-fix): 同点は商品ID昇順で安定化(同一入力 → 同一 TOP-N を保証)。
+    items.sort(key=lambda it: (-it.r_final, it.product_id))
 
     if not req.rerank:
         # ===== 従来パス(完全後方互換): R_final 降順 =====
         top = items[: req.top_n]
         _flag_serendipity(top)
+        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta)
         return RecommendV2Response(
             user_id=user.user_id,
             mu_thickness=mu_thickness,
@@ -196,6 +316,7 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
 
     top = reranked[: req.top_n]
     _flag_serendipity(top)
+    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta)
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,

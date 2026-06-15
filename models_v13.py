@@ -240,6 +240,52 @@ class RecommendV2Request(BaseModel):
     )
 
 
+class ReasonAxis(BaseModel):
+    """推薦理由の「軸別寄与」(好み起点)。文章化はフロントの責務。"""
+    axis: str = Field(..., description="catalog_x20.AXIS_NAMES の軸名")
+    label: str = Field(..., description="日本語ラベル(catalog_x20.AXIS_LABELS_JA)")
+    contribution: float = Field(..., description="μ_pref[k]·x20[k](正寄与のみ)")
+    evidence: List[str] = Field(
+        default_factory=list,
+        description="この軸の事後分散を最も縮めた観測の pair_id(最大2件)。"
+                    "※ bayesian 更新ループの計装が必要なため A2 時点では空配列(別途配線)。",
+    )
+
+
+class ProductTrait(BaseModel):
+    """推薦理由の「商品起点の特徴」(その商品で x20 値が突出している軸)。"""
+    axis: str = Field(..., description="商品側で値が突出している x20 軸名")
+    label: str = Field(..., description="日本語ラベル(catalog_x20.AXIS_LABELS_JA)")
+
+
+class RecommendReasons(BaseModel):
+    """推薦理由の構造化データ(A2)。文章化はフロント conciergeScript.ts の責務。
+
+    色/好みの寄与は「出所」でなく「意味」で再グルーピングした派生指標であり、
+    スコア計算(R_final)には一切影響しない。正規化はパーセンタイル方式
+    (候補プール内の順位率。絶対閾値なし=_flag_serendipity と同じ自己校正の哲学)。
+    """
+    color_percentile: float = Field(
+        ..., ge=0.0, le=1.0, description="色の似合い順位率(1=プール内で最も似合う)"
+    )
+    pref_percentile: float = Field(
+        ..., ge=0.0, le=1.0, description="好み一致の順位率(1=最も好みに一致)"
+    )
+    scene_match: bool = Field(
+        False,
+        description="シーン選択で言及した軸に商品が合致したか(A1 の I_dialog 配線で生きる。"
+                    "A2 時点では false 固定)。",
+    )
+    top_axes: List[ReasonAxis] = Field(
+        default_factory=list,
+        description="好み起点の寄与上位軸(最大2、正寄与かつ確信のある軸のみ)",
+    )
+    product_traits: List[ProductTrait] = Field(
+        default_factory=list,
+        description="商品起点の特徴軸(最大2、is_系バイナリ除く・top_axes と重複除く)",
+    )
+
+
 class RecommendV2Item(BaseModel):
     product_id: str
     name: str
@@ -270,6 +316,11 @@ class RecommendV2Item(BaseModel):
     )
     score: Optional[float] = Field(
         None, description="(1−w)·norm(R_final) + w·norm(EIG)(rerank=True 時のみ)"
+    )
+    reasons: Optional[RecommendReasons] = Field(
+        None,
+        description="推薦理由の構造化データ(A2)。reasons を読まない既存クライアントは"
+                    "無視できる(後方互換)。",
     )
 
 
