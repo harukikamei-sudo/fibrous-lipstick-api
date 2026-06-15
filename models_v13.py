@@ -59,6 +59,12 @@ class UserState(BaseModel):
         ...,
         description="塗り方好み(0=薄め, 1=濃いめ)。設計書既定 μ=0.5, σ²=0.1"
     )
+    pref_evidence: Optional[Dict[str, List[str]]] = Field(
+        None,
+        description="θ_pref 各軸(AXIS_NAMES)の事後分散を最も縮めた観測の pair_id 列(来歴・A2)。"
+                    "reasons.top_axes の evidence に使う。pair_compare 適用時に構築され、"
+                    "以降の update_user では保持される(ステートレス往復で持ち回る)。",
+    )
 
 
 # ============ 観測ログ(Kawanoさん AR → lip API) ============
@@ -84,6 +90,11 @@ class Observation(BaseModel):
     """
     source: ObservationSource
     product_id: Optional[str] = None
+    source_pair_id: Optional[str] = Field(
+        None,
+        description="この観測が由来するペア比較の pair_id(あれば)。θ_pref の来歴"
+                    "(pref_evidence)構築に使う。AR 観測等では None。",
+    )
     observed_lab: Optional[LabValue] = Field(
         None,
         description="θ_color 更新用。AR の場合は applied_Lab(K-M 結果)、"
@@ -164,6 +175,11 @@ class PairApplyResponse(BaseModel):
     theta_thickness: GaussianScalar
     n_color_obs: int
     n_worldview_obs: int
+    pref_evidence: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="θ_pref 軸別の来歴(軸名→縮小寄与の大きい pair_id 列)。"
+                    "caller は UserState.pref_evidence に格納して持ち回る(A2)。",
+    )
 
 
 # ============ /update_user ============
@@ -333,5 +349,16 @@ class RecommendV2Response(BaseModel):
     )
     used_explore_weight: Optional[float] = Field(
         None, description="再ランクで実際に使った w(rerank=False では None)"
+    )
+    candidate_count: int = Field(
+        0,
+        description="残候補数(A2-fix・competitive set 方式)。現時点の事後で全候補を"
+                    "スコアリングし、TOP-N 最下位スコアから margin·(1位−N位)以内にいる候補の数。"
+                    "事後が尖るほど減る(=絞り込みの進行)。退化時は TOP-N 件数。"
+                    "表示専用の派生指標で TOP-N 選定には不使用。"
+                    "※ 当初 fix の『R_final>中央値』定義は中央値分割が常に≈N/2で減らないため破棄。",
+    )
+    catalog_size: int = Field(
+        0, description="候補プール(km_table)の総数。フロントの『◯色から』起点に使う。"
     )
     results: List[RecommendV2Item]

@@ -406,6 +406,43 @@ def test_reasons_backward_compat_additive() -> None:
     print("  ✓ eig None / r_final 降順 / reasons は追加されるのみ")
 
 
+def test_candidate_count_competitive() -> None:
+    print("Test 20: candidate_count = competitive set(団子で多く、分離で減る)+ catalog_size")
+    from recommend_v2 import _competitive_count
+    packed = [1.0, 0.9, 0.8, 0.7, 0.6, 0.59, 0.58, 0.57]   # 6位以降が5位の近傍
+    separated = [1.0, 0.9, 0.8, 0.7, 0.6, 0.2, 0.1, 0.05]  # 6位以降が大きく分離
+    c_packed = _competitive_count(packed, top_n=5)
+    c_sep = _competitive_count(separated, top_n=5)
+    assert c_packed > c_sep, (c_packed, c_sep)
+    assert c_sep == 5, c_sep                                # 分離時は TOP-N に寄る
+    assert _competitive_count([1.0] * 8, top_n=5) == 5      # 退化(全同値)→ TOP-N
+    user = _make_user(mu_thickness=1.0)
+    km = [_make_km_row(f"p{i}", LabValue(L=50 + i, a=40, b=10)) for i in range(8)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=5))
+    assert res.catalog_size == 8
+    assert 5 <= res.candidate_count <= 8
+    print(f"  ✓ packed={c_packed} > separated={c_sep}, 退化=5, "
+          f"response candidate_count={res.candidate_count}/catalog={res.catalog_size}")
+
+
+def test_evidence_filled_from_user() -> None:
+    print("Test 21: reasons.top_axes.evidence は user.pref_evidence から最大2件充填")
+    mu = [0.0] * 20
+    var = [1.0] * 20
+    mu[6] = 1.0; var[6] = 0.3       # sheer → top_axes
+    user = _user_with_pref(mu, var)
+    user.pref_evidence = {"sheer": ["pair_03", "pair_07", "pair_09"]}
+    x20 = [0.0] * 20
+    x20[6] = 0.8
+    km = [_make_km_row("p", LabValue(L=50, a=40, b=10), x20=x20),
+          _make_km_row("q", LabValue(L=48, a=38, b=8), x20=[0.1] * 20)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    p = next(it for it in res.results if it.product_id == "p")
+    sheer = next(a for a in p.reasons.top_axes if a.axis == "sheer")
+    assert sheer.evidence == ["pair_03", "pair_07"], sheer.evidence
+    print(f"  ✓ sheer.evidence={sheer.evidence}(pref_evidence から最大2件)")
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -426,5 +463,7 @@ if __name__ == "__main__":
     test_reasons_product_traits_exclude()
     test_determinism_and_tiebreak()
     test_reasons_backward_compat_additive()
+    test_candidate_count_competitive()
+    test_evidence_filled_from_user()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 19 テスト合格")
+    print("✅ recommend_v2.py: 全 21 テスト合格")

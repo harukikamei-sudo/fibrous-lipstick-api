@@ -216,6 +216,7 @@ def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
             observations.append(Observation(
                 source="pair_color",
                 product_id=chosen.product_id,
+                source_pair_id=choice.pair_id,   # 来歴(pref_evidence)用
                 observed_lab=chosen.lab,
                 observed_x20=chosen.x20,
                 y=+1.0,
@@ -224,6 +225,7 @@ def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
             observations.append(Observation(
                 source="pair_color",
                 product_id=rejected.product_id,
+                source_pair_id=choice.pair_id,
                 observed_x20=rejected.x20,
                 y=-1.0,
             ))
@@ -233,18 +235,20 @@ def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
             observations.append(Observation(
                 source="pair_worldview",
                 product_id=chosen.product_id,
+                source_pair_id=choice.pair_id,
                 observed_x20=chosen.x20,
                 y=+1.0,
             ))
             observations.append(Observation(
                 source="pair_worldview",
                 product_id=rejected.product_id,
+                source_pair_id=choice.pair_id,
                 observed_x20=rejected.x20,
                 y=-1.0,
             ))
             n_wv += 1
 
-    # 5. ベイズ更新適用
+    # 5. ベイズ更新適用(pref_evidence も user_post に構築される)
     user_post, _ = apply_observations(user_seed, observations)
 
     return PairApplyResponse(
@@ -254,4 +258,5 @@ def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
         theta_thickness=user_post.theta_thickness,
         n_color_obs=n_color,
         n_worldview_obs=n_wv,
+        pref_evidence=user_post.pref_evidence or {},
     )

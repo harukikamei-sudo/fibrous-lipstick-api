@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import math
-from typing import List, Sequence
+from typing import Dict, List, Sequence
 
 import numpy as np
 from skimage import color as skcolor
@@ -140,6 +140,33 @@ IS_BINARY_AXES = {"is_tint", "is_balm", "is_gloss"}
 CONTINUOUS_PROXY = {"is_gloss": "glossy", "is_tint": "longlasting", "is_balm": "moisturizing"}
 TIEBREAK_MARGIN = 0.20   # 拮抗判定(差が20%以内なら連続軸を優先表示)。スコアには無影響。
 
+# candidate_count(A2-fix・competitive set 方式)。
+# ※ 当初 fix の「R_final>プール中央値の個数」は中央値分割が常に≈N/2で観測が進んでも減らず、
+#   「145→…→5」の絞り込み演出に使えないため破棄。TOP-N 最下位スコアから margin·(1位−N位)
+#   以内にいる候補数(事後が尖るほど分離して減る)に置換(A4 ハーネスで単調性を検証・調整)。
+MARGIN_COMPETITIVE = 0.15
+
+
+def _competitive_count(
+    r_finals_desc: Sequence[float], top_n: int, margin: float = MARGIN_COMPETITIVE
+) -> int:
+    """残候補数 = TOP-N 最下位スコアから margin·(1位−N位)以内にいる候補の数。
+
+    threshold = score[N位] − margin·(score[1位] − score[N位]),  count = #{R_final ≥ threshold}。
+    序盤(事後 flat)はスコアが団子で多く、観測が進み事後が尖ると分離して減る。
+    退化(スプレッド≈0=全同値/TOP-N団子)時は TOP-N 件数にフォールバック。
+    """
+    n = len(r_finals_desc)
+    if n == 0:
+        return 0
+    k = min(top_n, n)
+    s_top, s_bot = r_finals_desc[0], r_finals_desc[k - 1]
+    spread = s_top - s_bot
+    if spread <= 1e-9:
+        return k  # 退化 → TOP-N フォールバック
+    threshold = s_bot - margin * spread
+    return sum(1 for s in r_finals_desc if s >= threshold)
+
 
 def _percentile_high_good(values: Sequence[float], x: float) -> float:
     """x が values 内でどれだけ上位か(高い値=高パーセンタイル、[0,1])。
@@ -186,6 +213,7 @@ def _build_reasons(
     x20: Sequence[float], mu_pref: Sequence[float], pref_var: Sequence[float],
     dE: float, pref_contrib: float,
     pool_dEs: Sequence[float], pool_pref_contribs: Sequence[float],
+    pref_evidence: Dict[str, List[str]],
 ) -> RecommendReasons:
     """1商品分の reasons を構築(数値・ラベル・来歴のみ。文章化はフロント)。"""
     color_pct = _percentile_high_good([-d for d in pool_dEs], -dE)
@@ -199,7 +227,8 @@ def _build_reasons(
     ]
     eligible.sort(key=lambda t: (-t[1], t[0]))
     top_axes = [
-        ReasonAxis(axis=a, label=AXIS_LABELS_JA[a], contribution=round(c, 4), evidence=[])
+        ReasonAxis(axis=a, label=AXIS_LABELS_JA[a], contribution=round(c, 4),
+                   evidence=list(pref_evidence.get(a, []))[:2])
         for a, c in _top_axes_with_tiebreak(eligible)[:2]
     ]
 
@@ -225,6 +254,7 @@ def _build_reasons(
 def _attach_reasons(
     top: List[RecommendV2Item], req: RecommendV2Request, all_items: List[RecommendV2Item],
     mu_pref: Sequence[float], pref_var: Sequence[float], beta: float,
+    pref_evidence: Dict[str, List[str]],
 ) -> None:
     """返却 TOP-N に reasons を付与。パーセンタイルは候補プール(全 km_table)基準。"""
     w2 = req.familiarity_weights[1]
@@ -240,6 +270,7 @@ def _attach_reasons(
         it.reasons = _build_reasons(
             x20_by_id[it.product_id], mu_pref, pref_var,
             it.delta_e_to_color, _pref_contrib(it), pool_dEs, pool_pref_contribs,
+            pref_evidence,
         )
 
 
@@ -279,17 +310,24 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
     # 決定性(A2-fix): 同点は商品ID昇順で安定化(同一入力 → 同一 TOP-N を保証)。
     items.sort(key=lambda it: (-it.r_final, it.product_id))
 
+    # 残候補数(A2-fix・competitive set)+ プール総数。表示専用で TOP-N 選定には不使用。
+    pref_evidence = user.pref_evidence or {}
+    candidate_count = _competitive_count([it.r_final for it in items], req.top_n)
+    catalog_size = len(req.km_table)
+
     if not req.rerank:
         # ===== 従来パス(完全後方互換): R_final 降順 =====
         top = items[: req.top_n]
         _flag_serendipity(top)
-        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta)
+        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta, pref_evidence)
         return RecommendV2Response(
             user_id=user.user_id,
             mu_thickness=mu_thickness,
             beta_used=beta,
             reranked_by_eig=False,
             used_explore_weight=None,
+            candidate_count=candidate_count,
+            catalog_size=catalog_size,
             results=top,
         )
 
@@ -316,13 +354,15 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
 
     top = reranked[: req.top_n]
     _flag_serendipity(top)
-    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta)
+    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta, pref_evidence)
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,
         beta_used=beta,
         reranked_by_eig=True,
         used_explore_weight=max(0.0, min(1.0, w)),
+        candidate_count=candidate_count,
+        catalog_size=catalog_size,
         results=top,
     )
 

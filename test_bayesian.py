@@ -276,6 +276,29 @@ def _make_default_user() -> UserState:
     )
 
 
+# ============ Test 11: θ_pref 来歴(evidence・A2)============
+
+def test_compute_pref_evidence() -> None:
+    print("Test 11: compute_pref_evidence(軸別に精度寄与の大きい pair_id を保持)")
+    from bayesian import compute_pref_evidence
+
+    obs = [
+        Observation(source="pair_worldview", source_pair_id="wv_06",
+                    observed_x20=[1.0 if i == 15 else 0.0 for i in range(20)], y=1.0),
+        Observation(source="pair_worldview", source_pair_id="wv_07",
+                    observed_x20=[0.5 if i == 15 else 0.0 for i in range(20)], y=1.0),
+        # pair_id 無しの AR 観測は対象外
+        Observation(source="ar_view_like",
+                    observed_lab=LabValue(L=50, a=40, b=10), y=1.0),
+    ]
+    ev = compute_pref_evidence(obs)
+    # girly(AXIS_NAMES[15]): 寄与 x²/σ² が大きい wv_06(x=1.0)が先頭
+    assert ev.get("girly", [])[:1] == ["wv_06"], ev
+    assert "hue" not in ev, ev  # x=0 の軸は evidence を持たない
+    print(f"  ✓ girly evidence={ev.get('girly')}(寄与大の wv_06 が先頭、x=0軸は無し)")
+    print()
+
+
 if __name__ == "__main__":
     test_no_observations()
     test_thickness_table_match()
@@ -287,5 +310,6 @@ if __name__ == "__main__":
     test_apply_all_integration()
     test_thickness_clamped()
     test_pair_prior_color_sd_calibrated()
+    test_compute_pref_evidence()
     print("=" * 50)
-    print("✅ bayesian.py: 全 10 テスト合格")
+    print("✅ bayesian.py: 全 11 テスト合格")
