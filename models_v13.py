@@ -49,6 +49,11 @@ class UserState(BaseModel):
     user_id: str
     lip_lab: LabValue = Field(..., description="ノーリップ唇 Lab(初回診断で固定)")
     pc_season: Optional[PCSeason] = Field(None, description="Kawanoさん の PC 判定結果")
+    scenes: Optional[List[str]] = Field(
+        None,
+        description="シーン選択(school/friends/date/special)。recommend_v2 の I_dialog"
+                    "(familiarity 第1項)判定に使う(A1)。未指定なら I_dialog=0 で従来挙動。",
+    )
     theta_color: GaussianLab
     theta_pref: GaussianVec20
     theta_explore: GaussianScalar = Field(
@@ -164,6 +169,11 @@ class PairApplyRequest(BaseModel):
     )
     warmness: Optional[float] = Field(
         None, description="Part I の warmness 値(σ²_color_0 のシグモイドに使う)"
+    )
+    scenes: Optional[List[str]] = Field(
+        None,
+        description="シーン選択(school/friends/date/special)。θ_pref の事前を scene_priors で"
+                    "構築する(A1)。未指定なら従来どおり flat 事前(完全後方互換)。",
     )
 
 

@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 from bayesian import apply_observations
 from catalog_x20 import X20_COL_NAMES, load_x20_from_row
+from scene_priors import build_pref_prior
 from models_v13 import (
     GaussianLab,
     GaussianScalar,
@@ -52,8 +53,7 @@ SIGMA2_BASE = 100.0
 GAMMA = 2.0
 DELTA = 5.0
 S = 2.0
-# §11 事前
-TAU2_PREF = 1.0
+# §11 事前(TAU2_PREF は constants に一元化=scene_priors と共有・循環回避)
 MU_EXPLORE_0 = 0.5
 TAU2_EXPLORE = 0.25
 MU_THICKNESS_0 = 0.5
@@ -179,11 +179,10 @@ def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
         var=LabValue(L=var_c0, a=var_c0, b=var_c0),
     )
 
-    # 2. θ_pref の事前(flat)
-    theta_pref_prior = GaussianVec20(
-        mu=[0.0] * 20,
-        var=[TAU2_PREF] * 20,
-    )
+    # 2. θ_pref の事前(シーン選択から構築。A1)
+    #    scenes 未指定なら build_pref_prior([]) が flat(mu=0, var=TAU2_PREF)を返す=後方互換。
+    pref_mu, pref_var = build_pref_prior(req.scenes or [])
+    theta_pref_prior = GaussianVec20(mu=pref_mu, var=pref_var)
 
     # 3. θ_explore / θ_thickness の事前(固定)
     theta_explore_prior = GaussianScalar(mu=MU_EXPLORE_0, var=TAU2_EXPLORE)

@@ -2,6 +2,9 @@
 
 ★ 軸定義は DB(lipstick_DB_updated.xlsx)の正式 20 軸に準拠(2026-06-02 確定)。
    DB README の「20次元の構成」と users シートの θ_pref 列順を source of truth とする。
+   **x20 軸定義は AXIS_NAMES(v1.3)で確定。変更は要協議**(scene_priors / reasons の
+   top_axes・product_traits・AXIS_LABELS_JA / I_dialog がこの順序と名前に依存する)。
+   KAWANO_HANDOFF §Q4 の仮20軸(transparency/mature 等)は廃止。正は本ファイル。
 
 20 軸の内訳:
   色相 (1):    hue

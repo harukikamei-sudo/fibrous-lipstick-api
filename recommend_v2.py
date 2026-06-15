@@ -23,7 +23,9 @@ from typing import Dict, List, Sequence
 import numpy as np
 from skimage import color as skcolor
 
+import scene_priors
 from catalog_x20 import AXIS_LABELS_JA, AXIS_NAMES
+from constants import TAU2_PREF
 from models_v13 import (
     KMTableRow,
     LabValue,
@@ -134,11 +136,27 @@ def beta_from_explore(mu_explore: float, beta_max: float) -> float:
 # ※ フロント F3(conciergeScript.ts)の発話トリガー RHO と同値を共有すること
 #   (型生成に乗らないので .env / 定数ファイルで同期し、参照先をコメントで明記)。
 RHO_CONFIDENT = 0.5
-TAU2_PREF = 1.0          # = pair_compare.TAU2_PREF(A1 で constants へ一元化予定)
 # is_系バイナリ形態軸と、それに相関する連続軸(共線性)。表示のタイブレークにのみ使う。
 IS_BINARY_AXES = {"is_tint", "is_balm", "is_gloss"}
 CONTINUOUS_PROXY = {"is_gloss": "glossy", "is_tint": "longlasting", "is_balm": "moisturizing"}
 TIEBREAK_MARGIN = 0.20   # 拮抗判定(差が20%以内なら連続軸を優先表示)。スコアには無影響。
+
+# I_dialog(familiarity 第1項・A1): 選択シーンが言及する軸で商品 x20 がこの値超なら
+# 「対話で好み明言」相当として dialog_named=True。{要決定} 初期値 0.5。
+DIALOG_X20_THRESHOLD = 0.5
+
+
+def _scene_mentioned_indices(scenes) -> frozenset:
+    """選択シーンが言及する x20 軸のインデックス集合(I_dialog 用)。"""
+    if not scenes:
+        return frozenset()
+    axes = scene_priors.scene_mentioned_axes(list(scenes))
+    return frozenset(AXIS_NAMES.index(a) for a in axes if a in AXIS_NAMES)
+
+
+def _scene_match(x20: Sequence[float], mentioned_idx: frozenset) -> bool:
+    """選択シーン言及軸のうち、商品 x20 が閾値超の軸が1つ以上あれば True。"""
+    return any(x20[k] > DIALOG_X20_THRESHOLD for k in mentioned_idx)
 
 # candidate_count(A2-fix・competitive set 方式)。
 # ※ 当初 fix の「R_final>プール中央値の個数」は中央値分割が常に≈N/2で観測が進んでも減らず、
@@ -213,7 +231,7 @@ def _build_reasons(
     x20: Sequence[float], mu_pref: Sequence[float], pref_var: Sequence[float],
     dE: float, pref_contrib: float,
     pool_dEs: Sequence[float], pool_pref_contribs: Sequence[float],
-    pref_evidence: Dict[str, List[str]],
+    pref_evidence: Dict[str, List[str]], scene_match: bool,
 ) -> RecommendReasons:
     """1商品分の reasons を構築(数値・ラベル・来歴のみ。文章化はフロント)。"""
     color_pct = _percentile_high_good([-d for d in pool_dEs], -dE)
@@ -245,7 +263,7 @@ def _build_reasons(
     return RecommendReasons(
         color_percentile=round(color_pct, 4),
         pref_percentile=round(pref_pct, 4),
-        scene_match=False,  # A1 の I_dialog 配線で生きる。A2 時点では false 固定。
+        scene_match=scene_match,  # A1: 選択シーン言及軸で商品 x20 が閾値超か
         top_axes=top_axes,
         product_traits=product_traits,
     )
@@ -254,7 +272,7 @@ def _build_reasons(
 def _attach_reasons(
     top: List[RecommendV2Item], req: RecommendV2Request, all_items: List[RecommendV2Item],
     mu_pref: Sequence[float], pref_var: Sequence[float], beta: float,
-    pref_evidence: Dict[str, List[str]],
+    pref_evidence: Dict[str, List[str]], mentioned_idx: frozenset,
 ) -> None:
     """返却 TOP-N に reasons を付与。パーセンタイルは候補プール(全 km_table)基準。"""
     w2 = req.familiarity_weights[1]
@@ -267,10 +285,11 @@ def _attach_reasons(
     pool_dEs = [it.delta_e_to_color for it in all_items]
     pool_pref_contribs = [_pref_contrib(it) for it in all_items]
     for it in top:
+        x20 = x20_by_id[it.product_id]
         it.reasons = _build_reasons(
-            x20_by_id[it.product_id], mu_pref, pref_var,
+            x20, mu_pref, pref_var,
             it.delta_e_to_color, _pref_contrib(it), pool_dEs, pool_pref_contribs,
-            pref_evidence,
+            pref_evidence, _scene_match(x20, mentioned_idx),
         )
 
 
@@ -283,6 +302,8 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
     mu_pref = user.theta_pref.mu
     mu_explore = user.theta_explore.mu
     beta = beta_from_explore(mu_explore, req.beta_max)
+    # I_dialog(A1): 選択シーンが言及する軸のインデックス集合(scenes 未指定なら空=従来挙動)
+    mentioned_idx = _scene_mentioned_indices(user.scenes)
 
     items: List[RecommendV2Item] = []
     for row in req.km_table:
@@ -290,7 +311,7 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
         f, dE, pref_match = f_score(eff, mu_color, mu_pref, row.x20, req.alpha)
         fam = familiarity(
             eff, mu_color, mu_pref, row.x20, req.familiarity_weights,
-            dialog_named=False,
+            dialog_named=_scene_match(row.x20, mentioned_idx),
         )
         r_final = f - beta * fam
         items.append(RecommendV2Item(
@@ -319,7 +340,8 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
         # ===== 従来パス(完全後方互換): R_final 降順 =====
         top = items[: req.top_n]
         _flag_serendipity(top)
-        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta, pref_evidence)
+        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta,
+                    pref_evidence, mentioned_idx)
         return RecommendV2Response(
             user_id=user.user_id,
             mu_thickness=mu_thickness,
@@ -354,7 +376,8 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
 
     top = reranked[: req.top_n]
     _flag_serendipity(top)
-    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta, pref_evidence)
+    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta,
+                    pref_evidence, mentioned_idx)
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,

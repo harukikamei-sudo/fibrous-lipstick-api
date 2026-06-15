@@ -443,6 +443,29 @@ def test_evidence_filled_from_user() -> None:
     print(f"  ✓ sheer.evidence={sheer.evidence}(pref_evidence から最大2件)")
 
 
+def test_scene_match_i_dialog() -> None:
+    print("Test 22: scenes 指定で reasons.scene_match(I_dialog)が効く / 未指定は False")
+    from catalog_x20 import AXIS_NAMES
+    si = AXIS_NAMES.index("sweetness")        # date が言及する軸
+    user = _make_user(mu_thickness=1.0)
+    user.scenes = ["date"]
+    x20_hit = [0.0] * 20
+    x20_hit[si] = 0.9                          # date 言及軸が高い → match
+    x20_miss = [0.0] * 20
+    x20_miss[si] = 0.1                         # 低い → no match
+    km = [_make_km_row("hit", LabValue(L=50, a=40, b=10), x20=x20_hit),
+          _make_km_row("miss", LabValue(L=50, a=40, b=10), x20=x20_miss)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    by = {it.product_id: it for it in res.results}
+    assert by["hit"].reasons.scene_match is True, by["hit"].reasons
+    assert by["miss"].reasons.scene_match is False, by["miss"].reasons
+    # scenes 未指定 → scene_match は全 False(完全後方互換)
+    res2 = recommend_v2(RecommendV2Request(user=_make_user(mu_thickness=1.0),
+                                           km_table=km, top_n=2))
+    assert all(it.reasons.scene_match is False for it in res2.results)
+    print("  ✓ date×sweetness高=match / 低=no match / scenes無=全False")
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -465,5 +488,6 @@ if __name__ == "__main__":
     test_reasons_backward_compat_additive()
     test_candidate_count_competitive()
     test_evidence_filled_from_user()
+    test_scene_match_i_dialog()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 21 テスト合格")
+    print("✅ recommend_v2.py: 全 22 テスト合格")

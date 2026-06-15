@@ -44,6 +44,9 @@ jobs:
       - name: Run test_bayesian.py
         run: python test_bayesian.py
 
+      - name: Run test_scene_priors.py
+        run: python test_scene_priors.py
+
       - name: Run test_recommend_v2.py
         run: python test_recommend_v2.py
 

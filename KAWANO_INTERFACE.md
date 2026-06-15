@@ -317,12 +317,17 @@ R_final(似合い)と EIG(期待情報利得)をブレンドし、探索性 `θ_
    - 俺が仮で組んだだけ。商品の組み合わせ・提示順は Kawanoさん 側の UX に合わせたい
    - `_PAIR_SPECS`(`pair_compare.py`)を差し替えるだけで反映できる
 
-4. **20 次元 pref ベクトル `x_20` の軸定義**
-   - 仮定義: pigmentation / vivid / transparency / glossiness / matte_finish /
+4. **20 次元 pref ベクトル `x_20` の軸定義** — ✅ **確定済み(要協議で変更)**
+   - **x20 軸定義は `catalog_x20.AXIS_NAMES`(v1.3)で確定。変更は要協議**
+     (scene_priors / reasons の top_axes・product_traits / I_dialog がこの順序・名前に依存)。
+   - 確定 20 軸: hue / saturation / brightness / pigmentation / glossy / moisture_finish /
+     sheer / velvet / blur / is_tint / is_balm / is_gloss / moisturizing / longlasting /
+     transfer_resistance / girly / makeup_intensity / konare / sweetness / korean
+   - ↓の旧「仮定義」(transparency / mature 等)は**廃止**。正は `catalog_x20.py`。
+   - 仮定義(廃止): pigmentation / vivid / transparency / glossiness / matte_finish /
      velvet_finish / moisture / durability / blur_effect / juicy_feel /
      cool_tone / warm_tone / light_color / deep_color / everyday_use /
      girly / konare / sweetness / korean / mature
-   - Kawanoさん が AR で扱いたい「印象タグ」と整合を取りたい
 
 5. **観測ログのスキーマ**
    - 今は `source` enum で分岐。`extras: {}` フィールドを追加して将来拡張できるようにも可
