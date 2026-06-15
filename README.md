@@ -144,6 +144,22 @@ git push hf main       # HF Spaces(自動再ビルド)
 
 詳細は [`DEPLOY.md`](./DEPLOY.md)。
 
+## OpenAPI / TypeScript 型生成(A5)
+
+API スキーマからフロント(color-capture)の型を自動生成し、手書き型と
+`models_v13.py` の乖離を防ぐ。
+
+```bash
+# API 側: openapi.json を再生成(uvicorn 起動不要、app.openapi() を直ダンプ)
+python scripts/export_openapi.py            # → リポジトリ直下 openapi.json
+```
+
+- `openapi.json` は**生成物**。エンドポイント/モデルを変えたら再生成すること
+  (`sort_keys` 付きで安定出力=差分ノイズ最小)。
+- フロント側(color-capture)は `openapi.json` から `openapi-typescript` で
+  `src/lib/apiTypes.gen.ts` を生成する(手順は color-capture の README 参照)。
+  当面は既存の手書き `apiTypes.ts` を残し、生成型との差分を確認してから置換。
+
 ## License
 
 MIT
