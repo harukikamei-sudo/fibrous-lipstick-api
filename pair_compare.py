@@ -164,39 +164,44 @@ def get_pair_bank() -> PairInitResponse:
 
 # ============ API: /pair_compare/apply ============
 
+def build_seed_user(
+    lip_lab: LabValue,
+    pc_season: Optional[str] = None,
+    warmness: Optional[float] = None,
+    scenes: Optional[List[str]] = None,
+    user_id: str = "__pair_init__",
+    mu_thickness: float = MU_THICKNESS_0,
+) -> UserState:
+    """PC 事前(θ_color)+ シーン事前(θ_pref)から初期 UserState を構築。
+
+    apply_pair_choices(v13)と /v14/pair_compare/start(A3)で共用。
+    scenes 未指定なら build_pref_prior([]) が flat を返す=完全後方互換。
+    """
+    if pc_season and pc_season in PC_MU_COLOR_0:
+        mu_c0 = PC_MU_COLOR_0[pc_season]
+    else:
+        mu_c0 = LabValue(L=50, a=30, b=15)  # neutral
+    var_c0 = _sigma2_color_0(warmness)
+    pref_mu, pref_var = build_pref_prior(scenes or [])
+    return UserState(
+        user_id=user_id,
+        lip_lab=lip_lab,
+        pc_season=pc_season,
+        scenes=scenes,  # A1: recommend_v2 の I_dialog 用に保持
+        theta_color=GaussianLab(mu=mu_c0, var=LabValue(L=var_c0, a=var_c0, b=var_c0)),
+        theta_pref=GaussianVec20(mu=pref_mu, var=pref_var),
+        theta_explore=GaussianScalar(mu=MU_EXPLORE_0, var=TAU2_EXPLORE),
+        theta_thickness=GaussianScalar(mu=mu_thickness, var=SIGMA2_THICKNESS_0),
+    )
+
+
 def apply_pair_choices(req: PairApplyRequest) -> PairApplyResponse:
     """選択結果を観測列に変換 → bayesian.apply_observations で事前分布構築。"""
     pair_by_id = {p.pair_id: p for p in PAIR_BANK}
 
-    # 1. θ_color の事前(PC ベース or flat)
-    if req.pc_season and req.pc_season in PC_MU_COLOR_0:
-        mu_c0 = PC_MU_COLOR_0[req.pc_season]
-    else:
-        mu_c0 = LabValue(L=50, a=30, b=15)  # neutral
-    var_c0 = _sigma2_color_0(req.warmness)
-    theta_color_prior = GaussianLab(
-        mu=mu_c0,
-        var=LabValue(L=var_c0, a=var_c0, b=var_c0),
-    )
-
-    # 2. θ_pref の事前(シーン選択から構築。A1)
-    #    scenes 未指定なら build_pref_prior([]) が flat(mu=0, var=TAU2_PREF)を返す=後方互換。
-    pref_mu, pref_var = build_pref_prior(req.scenes or [])
-    theta_pref_prior = GaussianVec20(mu=pref_mu, var=pref_var)
-
-    # 3. θ_explore / θ_thickness の事前(固定)
-    theta_explore_prior = GaussianScalar(mu=MU_EXPLORE_0, var=TAU2_EXPLORE)
-    theta_thickness_prior = GaussianScalar(mu=MU_THICKNESS_0, var=SIGMA2_THICKNESS_0)
-
-    # 仮 user state
-    user_seed = UserState(
-        user_id="__pair_init__",
-        lip_lab=LabValue(L=62, a=22, b=12),  # 仮(後で /update_user で正値に差し替え)
-        pc_season=req.pc_season,
-        theta_color=theta_color_prior,
-        theta_pref=theta_pref_prior,
-        theta_explore=theta_explore_prior,
-        theta_thickness=theta_thickness_prior,
+    # 1〜3. PC + シーンから初期 UserState(lip_lab は仮。後で /update_user で正値に差し替え)
+    user_seed = build_seed_user(
+        LabValue(L=62, a=22, b=12), req.pc_season, req.warmness, req.scenes
     )
 
     # 4. 選択結果 → 観測列

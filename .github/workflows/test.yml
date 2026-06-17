@@ -55,3 +55,6 @@ jobs:
 
       - name: Run test_v13_flow.py (E2E)
         run: python test_v13_flow.py
+
+      - name: Run test_v14_flow.py (E2E)
+        run: python test_v14_flow.py

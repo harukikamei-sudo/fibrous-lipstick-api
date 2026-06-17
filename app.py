@@ -63,7 +63,14 @@ from models_v13 import (
     RecommendV2Response,
     UpdateUserRequest,
     UpdateUserResponse,
+    UserState,
+    V14NextRequest,
+    V14NextResponse,
+    V14Session,
+    V14StartRequest,
+    V14StartResponse,
 )
+import pair_eig
 
 
 # ============ 設定 ============
@@ -751,6 +758,89 @@ def v13_recommend(req: RecommendV2Request):
         explore_weight=req.explore_weight,
     )
     return rec_v2.recommend_v2(full_req)
+
+
+# ============ v14 逐次ペア比較(A3)============
+
+N_PAIRS_V14 = 8  # 固定問数。A4 検証次第で 7 に下げる可能性(動的打ち切りはしない=UX確定仕様)。
+
+
+def _v14_candidate_count(user: UserState, km_table: List[KMTableRow]) -> tuple:
+    """現在の事後での残候補数(competitive set)+ プール総数。recommend_v2 の指標を流用。"""
+    res = rec_v2.recommend_v2(RecommendV2Request(user=user, km_table=km_table, top_n=5))
+    return res.candidate_count, res.catalog_size
+
+
+@app.post("/v14/pair_compare/start", response_model=V14StartResponse)
+def v14_pair_compare_start(req: V14StartRequest):
+    """逐次ペア比較の開始。シーン+PC 事前で初期化し、最初の最大EIGペアを返す。
+
+    session_state(=UserState 相当)はクライアント往復方式(サーバ側に保存しない)。
+    """
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    user = pc_mod.build_seed_user(
+        lip_lab=req.lip_lab, pc_season=req.pc_season, warmness=req.warmness,
+        scenes=req.scenes, mu_thickness=req.mu_thickness,
+    )
+    lip = [req.lip_lab.L, req.lip_lab.a, req.lip_lab.b]
+    km_table = _km_table_for_user(lip, None)
+    row_by_id = {r.product_id: r for r in km_table}
+    best = pair_eig.best_pair(user, pc_mod.PAIR_BANK, [], row_by_id, req.mu_thickness)
+    if best is None:
+        raise HTTPException(status_code=503, detail="ペアバンクが空")
+    first_pair, _eig = best
+    cc, cs = _v14_candidate_count(user, km_table)
+    return V14StartResponse(
+        session=V14Session(user=user, asked_pair_ids=[first_pair.pair_id]),
+        n_pairs_total=N_PAIRS_V14,
+        first_pair=pair_eig.pair_v14(first_pair, row_by_id, req.mu_thickness),
+        candidate_count=cc,
+        catalog_size=cs,
+    )
+
+
+@app.post("/v14/pair_compare/next", response_model=V14NextResponse)
+def v14_pair_compare_next(req: V14NextRequest):
+    """選択を観測としてベイズ更新 → 残問あれば次の最大EIGペアを返す。固定 N 問で done。"""
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    pair = {p.pair_id: p for p in pc_mod.PAIR_BANK}.get(req.pair_id)
+    if pair is None:
+        raise HTTPException(status_code=422, detail=f"未知の pair_id: {req.pair_id}")
+
+    user = req.session.user
+    mu_t = user.theta_thickness.mu
+    lip = [user.lip_lab.L, user.lip_lab.a, user.lip_lab.b]
+    km_table = _km_table_for_user(lip, None)
+    row_by_id = {r.product_id: r for r in km_table}
+
+    new_user = pair_eig.apply_v14_choice(user, pair, req.chose, row_by_id, mu_t)
+    snap = pair_eig.theta_snapshot(user, new_user)
+
+    asked = list(req.session.asked_pair_ids)
+    if req.pair_id not in asked:
+        asked.append(req.pair_id)
+
+    done = len(asked) >= N_PAIRS_V14
+    next_pair_payload = None
+    if not done:
+        best = pair_eig.best_pair(new_user, pc_mod.PAIR_BANK, asked, row_by_id, mu_t)
+        if best is None:
+            done = True  # 出せるペアが尽きた(PAIR_BANK 枯渇)
+        else:
+            np_pair, _eig = best
+            asked.append(np_pair.pair_id)  # 二度出さない: 提示時点で asked に積む
+            next_pair_payload = pair_eig.pair_v14(np_pair, row_by_id, mu_t)
+
+    cc, cs = _v14_candidate_count(new_user, km_table)
+    return V14NextResponse(
+        session=V14Session(user=new_user, asked_pair_ids=asked),
+        done=done,
+        next_pair=next_pair_payload,
+        theta_snapshot=snap,
+        candidate_count=cc,
+    )
 
 
 def _interpret_match_rate(r: float) -> str:

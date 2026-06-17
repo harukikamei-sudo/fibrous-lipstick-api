@@ -52,6 +52,8 @@ lip API は **state を持ちません**。リクエスト毎に caller(Kawano�
 | POST | `/v13/pair_compare/apply` | ペア選択 → 事前分布構築 |
 | POST | `/v13/update_user`        | 観測ログ → 更新後 UserState |
 | POST | `/v13/recommend`          | UserState → TOP-N 推薦(`rerank:true` で EIG 能動学習) |
+| POST | `/v14/pair_compare/start` | 逐次ペア比較の開始(最大EIGペア + effective_lab)。§4.6 |
+| POST | `/v14/pair_compare/next`  | 選択→更新→次の最大EIGペア(固定 N=8 問)。§4.6 |
 
 ベース URL(本番):
 ```
@@ -297,6 +299,36 @@ R_final(似合い)と EIG(期待情報利得)をブレンドし、探索性 `θ_
 
 > 注: EIG は「P(like) は ΔE2000(知覚)で、KL は Lab座標の情報量で」測る異指標の近似。
 > EIG は中間距離の色でピーク(近すぎ=学びが薄い、遠すぎ=当たらない)。
+
+### 4.6 v14 逐次ペア比較 — `/v14/pair_compare/start` / `next`(A3)
+
+ペア比較を「固定10問一括」から「**逐次・最大EIG選択・固定 N=8 問**」に変更した新系。
+**v13 系は完全温存**(Kawanoさんの既存実装は無改修で動く)。v14 を使う場合のみ移行。
+
+```
+POST /v14/pair_compare/start
+  in : { lip_lab, scenes?, pc_season?, warmness?, mu_thickness?=0.5 }
+  out: { session, n_pairs_total(=8), first_pair: PairV14, candidate_count, catalog_size }
+
+POST /v14/pair_compare/next
+  in : { session, pair_id, chose:"left"|"right" }
+  out: { session, done, next_pair?: PairV14, theta_snapshot, candidate_count }
+```
+
+- **session はクライアント往復方式**(`{ user: UserState, asked_pair_ids: [...] }`)。サーバ側に
+  セッションを持たない(v13 の UserState 往復と同じ思想)。毎回 out の session をそのまま次の in に渡す。
+- **`PairV14` は left/right に `effective_lab` を含む**(`lip_lab + μ_thickness` の K-M 塗布後 Lab)。
+  フロントはこれで**本人の唇画像を再着色**して比較(パッケージ画像をやめ、観測とモデル仮定を整合)。
+  そのため start で **`lip_lab` を渡す必要がある**(ここが v13 との接続差・MTG §5-1)。
+- **逐次選択**: 各 next で選択を観測としてベイズ更新 → 残問あれば次の最大EIGペアを返す。
+  同一ペアは二度出さない。EIG 最大選択は同点 pair_id 昇順で決定的。
+- **EIG_pair** = Σ_c P(c)·KL(事後‖事前)(期待KL形・ガウス閉形式)。P(c) は Bradley-Terry
+  `σ(β_BT·(fit差))`、β_BT=0.25(`active_learning.SLOPE_DEFAULT` 流用)。更新ノイズは v13 と同じ
+  ペア σ²。詳細は `pair_eig.py`。動的打ち切りはしない(進捗バーの終端を見せる=UX確定仕様)。
+- **`theta_snapshot`**(中間実況用): `theta_pref` の現在 mu/var + 直前で σ² が最も縮んだ軸名。
+  コンシェルジュ(F3)が「透け感が好きみたいだね」と実況するのに使う。
+- **`candidate_count`**(絞り込みカウンタ): その時点の事後での残候補数(competitive set・§ A2-fix)。
+- N_PAIRS は既定 8(`app.N_PAIRS_V14`)。A4 検証次第で 7 に下げる可能性。
 
 ---
 

@@ -372,3 +372,71 @@ class RecommendV2Response(BaseModel):
         0, description="候補プール(km_table)の総数。フロントの『◯色から』起点に使う。"
     )
     results: List[RecommendV2Item]
+
+
+# ============ v14 逐次ペア比較(A3)============
+
+class PairV14Side(BaseModel):
+    """v14 ペアの片側。effective_lab(唇に塗った想定の色)を含むのが v13 との差。"""
+    product_id: str
+    name: str
+    image_url: Optional[str] = None
+    lab: LabValue                       # 商品マスストーン Lab
+    x20: List[float] = Field(..., min_length=20, max_length=20)
+    effective_lab: LabValue = Field(
+        ..., description="lip_lab + μ_thickness の K-M 塗布後 Lab(フロントが本人の唇を再着色)"
+    )
+
+
+class PairV14(BaseModel):
+    pair_id: str
+    pair_type: Literal["color", "worldview"]
+    left: PairV14Side
+    right: PairV14Side
+
+
+class V14Session(BaseModel):
+    """ステートレス往復セッション(UserState 相当 + 進行)。サーバ側には保存しない。"""
+    user: UserState
+    asked_pair_ids: List[str] = Field(default_factory=list)
+
+
+class ThetaSnapshot(BaseModel):
+    """フロント中間実況用: θ_pref の現在値 + 直前で最も分散が縮んだ軸。"""
+    pref_mu: List[float] = Field(..., min_length=20, max_length=20)
+    pref_var: List[float] = Field(..., min_length=20, max_length=20)
+    top_shrunk_axis: Optional[str] = Field(
+        None, description="直前の選択で σ² が最も縮んだ θ_pref 軸名(無ければ None)"
+    )
+
+
+class V14StartRequest(BaseModel):
+    lip_lab: LabValue
+    scenes: Optional[List[str]] = None
+    pc_season: Optional[PCSeason] = None
+    warmness: Optional[float] = None
+    mu_thickness: float = Field(
+        0.5, ge=0.0, le=1.0, description="effective_lab 計算の塗り厚(既定 0.5)"
+    )
+
+
+class V14StartResponse(BaseModel):
+    session: V14Session
+    n_pairs_total: int
+    first_pair: PairV14
+    candidate_count: int
+    catalog_size: int
+
+
+class V14NextRequest(BaseModel):
+    session: V14Session
+    pair_id: str
+    chose: Literal["left", "right"]
+
+
+class V14NextResponse(BaseModel):
+    session: V14Session
+    done: bool
+    next_pair: Optional[PairV14] = None
+    theta_snapshot: ThetaSnapshot
+    candidate_count: int
