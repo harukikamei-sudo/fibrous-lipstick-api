@@ -440,3 +440,22 @@ class V14NextResponse(BaseModel):
     next_pair: Optional[PairV14] = None
     theta_snapshot: ThetaSnapshot
     candidate_count: int
+
+
+# ============ /v13/popular: ユーザー非依存の「みんなの定番」(F4-fix #5)============
+
+class PopularItem(BaseModel):
+    product_id: str
+    name: str
+    line_category: str
+    image_url: Optional[str] = None
+    lab: LabValue
+    representativeness: float = Field(
+        ..., ge=0.0, le=1.0, description="定番度(カタログ中心 Lab への近さ。1=最も汎用的)"
+    )
+
+
+class PopularResponse(BaseModel):
+    catalog_size: int
+    method: str = Field(..., description="代表性の算出方法(MVP=median Lab centroid 距離)")
+    results: List[PopularItem]

@@ -301,6 +301,24 @@ def test_recommend_rerank_top1_de_monotonic() -> None:
     print("  ✓ w を上げるほど遠い色(探索的)が先頭に")
 
 
+def test_popular_static_ranking() -> None:
+    hr("/v13/popular: ユーザー非依存・代表性ランキング(決定的・top_n 尊重)")
+    r = client.get("/v13/popular?top_n=5")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["catalog_size"] >= 1
+    assert 1 <= len(d["results"]) <= 5, d["results"]
+    reps = [it["representativeness"] for it in d["results"]]
+    assert all(0.0 <= x <= 1.0 for x in reps), reps
+    # 代表性は降順(中心に近い=高い が先頭)
+    assert reps == sorted(reps, reverse=True), f"representativeness 降順でない: {reps}"
+    # 決定的: 2 回呼んで同一
+    ids1 = [it["product_id"] for it in d["results"]]
+    ids2 = [it["product_id"] for it in client.get("/v13/popular?top_n=5").json()["results"]]
+    assert ids1 == ids2, (ids1, ids2)
+    print(f"  ✓ 定番 TOP-1: {ids1[0]} (rep={reps[0]:.3f}), 決定的")
+
+
 if __name__ == "__main__":
     # /v13/pair_compare/init
     test_pair_init_returns_10_pairs()
@@ -323,5 +341,7 @@ if __name__ == "__main__":
     test_recommend_rerank_w0_equals_default()
     test_recommend_rerank_explore_weight_default()
     test_recommend_rerank_top1_de_monotonic()
+    # /v13/popular
+    test_popular_static_ranking()
     print("\n" + "=" * 50)
-    print("✅ /v13/* endpoints: 全 15 テスト合格")
+    print("✅ /v13/* endpoints: 全 16 テスト合格")

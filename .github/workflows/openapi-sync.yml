@@ -1,0 +1,61 @@
+name: openapi-sync
+
+# openapi.json 再生成(clean Linux=skimage の Gatekeeper ハング回避)。
+# app を import して app.openapi() を dump し、成果物としてアップロードする。
+# color-capture 側はこの openapi.json を取得して `npm run gen:api-types` で
+# apiTypes.gen.ts を再生成する(2リポジトリ構成のため型生成はフロント側で実行)。
+#
+# 背景: ローカルは app import で skimage の .so コールド起動がハングするため
+#       openapi.json をローカル更新できず、A3 で追加した /v14 が gen 型から欠落していた。
+#
+# 運用(次バッチ):
+#   1. このジョブを手動 dispatch → artifact `openapi-json` をダウンロード。
+#   2. fibrous-lipstick-api/openapi.json を差し替えてコミット(レビュー付き)。
+#   3. color-capture で `npm run gen:api-types`(= openapi-typescript で apiTypes.gen.ts 再生成)。
+#   ※ 自動コミットにしたい場合は permissions: contents:write + git push を足す(下にコメント)。
+on:
+  workflow_dispatch:
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install system deps (libGL)
+        run: sudo apt-get update -y && sudo apt-get install -y libgl1
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Dump openapi.json from FastAPI app
+        run: |
+          python - <<'PY'
+          import json
+          from app import app
+          spec = app.openapi()
+          with open("openapi.json", "w", encoding="utf-8") as f:
+              json.dump(spec, f, ensure_ascii=False, indent=2)
+          paths = sorted(spec.get("paths", {}))
+          print(f"openapi.json paths: {len(paths)}")
+          for p in paths:
+              print(" ", p)
+          assert "/v14/pair_compare/start" in paths, "v14 が openapi に出ていない"
+          PY
+      - name: Upload openapi.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-json
+          path: openapi.json
+      # --- 自動コミットにする場合(レビュー不要なら有効化) ---
+      # permissions: { contents: write }  ← job レベルに付与
+      # - name: Commit refreshed openapi.json
+      #   run: |
+      #     git config user.name "github-actions"
+      #     git config user.email "actions@github.com"
+      #     git add openapi.json
+      #     git diff --cached --quiet || git commit -m "ci: refresh openapi.json"
+      #     git push

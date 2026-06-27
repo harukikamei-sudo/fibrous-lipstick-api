@@ -21,6 +21,7 @@ import ipaddress
 import math
 import os
 import socket
+import statistics
 from io import BytesIO
 from typing import Dict, List, Literal, Optional
 from urllib.parse import urlparse
@@ -59,6 +60,8 @@ from models_v13 import (
     PairApplyRequest,
     PairApplyResponse,
     PairInitResponse,
+    PopularItem,
+    PopularResponse,
     RecommendV2Request,
     RecommendV2Response,
     UpdateUserRequest,
@@ -840,6 +843,50 @@ def v14_pair_compare_next(req: V14NextRequest):
         next_pair=next_pair_payload,
         theta_snapshot=snap,
         candidate_count=cc,
+    )
+
+
+@app.get("/v13/popular", response_model=PopularResponse)
+def v13_popular(top_n: int = 5):
+    """ユーザー非依存の「みんなの定番」ランキング(F4-fix #5 / フロントは参照枠として併設)。
+
+    狙い: 診断ごとに動くパーソナライズ結果の隣に「不動の共通基準」を置き、自分の結果が
+    極端に浮いていないかをユーザー自身が確認できるようにする(MTG 合意)。
+
+    代表性(representativeness)の算出 — MVP は売上/レビューが無いため**カタログ代表性で代用**:
+      代表性 = カタログ中央 Lab(各成分の median = centroid)への **Euclidean 距離が小さいほど高い**。
+      = 「カタログの真ん中にいる=多くの人に汎用的に使える色」という近似。
+      本番では売上数・レビュー数・在庫回転などに差し替える前提(この近似は暫定)。
+    決定的: 同点は product_id 昇順。ユーザー状態に一切依存しない静的ランキング。
+    """
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    top_n = max(1, min(top_n, len(CATALOG)))
+    ls = [p["lab"][0] for p in CATALOG]
+    as_ = [p["lab"][1] for p in CATALOG]
+    bs = [p["lab"][2] for p in CATALOG]
+    cen = (statistics.median(ls), statistics.median(as_), statistics.median(bs))
+
+    def _dist(lab) -> float:
+        return math.sqrt((lab[0] - cen[0]) ** 2 + (lab[1] - cen[1]) ** 2 + (lab[2] - cen[2]) ** 2)
+
+    scored = sorted(((_dist(p["lab"]), p["id"], p) for p in CATALOG), key=lambda t: (t[0], t[1]))
+    d_max = max((d for d, _, _ in scored), default=1.0) or 1.0
+    results = [
+        PopularItem(
+            product_id=p["id"],
+            name=p["name"],
+            line_category=p["line_category"] or "tint",
+            image_url=p["image_url"],
+            lab=LabValueV13(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
+            representativeness=round(1.0 - d / d_max, 4),
+        )
+        for d, _, p in scored[:top_n]
+    ]
+    return PopularResponse(
+        catalog_size=len(CATALOG),
+        method="centroid_distance(median Lab); MVP 代用(本番は売上/レビューに差し替え)",
+        results=results,
     )
 
 
