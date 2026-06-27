@@ -937,6 +937,13 @@ v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦�
   `colorPreview.labToHex` を再利用化(Lab→sRGB 重複解消)。`lipDetection.ts` は不変。Kawano の AR
   本実装統合までの簡易レンダラ・コンポーネント非依存。※ プレビューの完全配線(マスク plumbing)は
   PairCompareStep v14(F2本体)で行う。SampleResult は cropDataUrl のみ保持・mask 未保持のため。
+- **F2本体**(2026-06-27): `PairCompareStep` を v13 一括(init/apply)から **v14 逐次(start→next×N)** に
+  書き換え。各ペアを**本人の唇クロップに `recolorLips` で再着色**して左右プレビュー表示(マスクは
+  a* 中央値ヒューリスティック=本マスク未保持のため簡易。Kawano AR で置換予定)。progress は API の
+  `n_pairs_total` 基準。`done` で `session.user` を UserState として確定 → recommend へ。next 失敗は選択保持で
+  リトライ。session に `thetaSnapshot/candidateCount/catalogSize` を末尾追記。apiClient に v14 メソッド、
+  apiTypes.ts に v14 型を**手書き**追加(`openapi.json` が 6/15=A3 の /v14 追加前で陳腐化 → 再生成は
+  app import=skimage でローカルハング。**openapi.json 再生成は CI or 実ターミナルで別途要**)。
 - **F3**(2026-06-27): Concierge scaffold。`conciergeScript.ts`(テンプレート方式・LLM不使用)に
   3フェーズ選択ロジック `selectSpeech(ctx)` + step_intro/axis_realization/reason_*/serendipity/
   decision の器 + 仮テキスト(文面は Kawano 3パターン待ち=全 TODO)。`Concierge.tsx`(フローティング
@@ -965,7 +972,12 @@ clean Linux)で回しログから数値を読む方式に確立。3 ペルソナ
 aya=シアー明るめ / yuki=マット暗め)を matching 集合の平均で「真の好み」とし、
 オラクル選択(真の好みに近い側を決定的に選ぶ)で逐次シミュレート。
 
-### 結論(C/D 確定 — いずれも現行値を維持。定数変更は行わない)
+### 結論(C/D 確定 — **2026-06-27 人間承認済み**。いずれも現行値を維持・定数変更なし)
+
+> **承認(2026-06-27)**: N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / 20軸 を全て確定。中核成果は
+> **scene+7 で hit=0.47(flat+10 同値)= 問数削減の実証**。[2] 色フロントロードは害なしと判断、
+> タイプ別正規化/交互提示は**将来オプションのメモのみ・今は実装しない**。familiarity [4,3,2] 据置、
+> serendipity も**定義変更せず現行維持**(提案案は材料として本ログに残すのみ)。
 
 - **N_PAIRS_V14 = 8 を確定(現行維持)**。scene+7 で hit=0.47(=flat+10 と同値)に到達、
   scene+8 で σ²=0.402(flat+10 の 0.376 に肉薄)+ 世界観ペア消化 15/9 まで伸びる。
