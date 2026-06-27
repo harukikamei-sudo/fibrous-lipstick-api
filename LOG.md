@@ -1038,7 +1038,39 @@ aya=シアー明るめ / yuki=マット暗め)を matching 集合の平均で「
 ### 次の設計判断(人間)— A4 結果を受けて
 - **色ごと x20 補正(Lab→x20 の色別補正)**: [4] の mina/aya collapse はカタログのティント密集 +
   色項優位が原因。色別に x20(特に色相依存の世界観軸)を補正すれば分離が改善する可能性。
-  A4 結果を見てから別途設計する(**今回は触っていない**)。
+  A4 結果を見てから別途設計する。
+
+### 色別 sheer 補正 γ スイープ(2026-06-27 実施・**不採用**)
+
+人間承認のもと `apply_color_correction`(sheer をゼロ平均・有界で色変調、γ=0 で現行一致)を実装し、
+A4 harness で γ∈{0,0.1,0.2,0.3} をスイープ(matching/true_pref/pair は baseline 固定、recommend の
+km_table x20 にのみ補正適用)。**採用ゲート①(mina/aya Jaccard 低下)を満たさず不採用**:
+
+| γ | mina/aya | yuki/mina | yuki/aya | 全体hit | mina hit | maxΔsheer |
+|---|---|---|---|---|---|---|
+| 0.0 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.000 |
+| 0.1 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.035 |
+| 0.2 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.070 |
+| 0.3 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.105 |
+
+- **maxΔsheer は増加(補正は効いている)が mina/aya Jaccard は 1.00 不変** → collapse は **sheer 解像度ではない**。
+- 仮説: recommend の **色項 α·ΔE(α=3)が支配**し、mina/aya が学習後に近い μ_color へ収束 → TOP5 が色で
+  決まり sheer の pref 寄与が順位を動かさない(or 学習 μ_pref[sheer]≈両者同程度)。
+- **コードは残す**(`CORRECTION_GAMMA=0` で完全無効=現行一致、後方互換)。採用 γ の決定は人間 →
+  **現状は γ=0(無補正)を維持**。次の手は人間判断(下記オプション)。
+- **次オプション(未着手・要人間判断)**: (a) harness を instrument 化して mina/aya の μ_color/μ_pref[sheer]/
+  f-score 内訳を出し collapse の真因を特定、(b) 色を定義する軸(hue/saturation 等)や α 再重み付けを検討、
+  (c) カタログ限界として collapse を受容。**勝手に α や軸は変えない**。
+
+### /v13/popular 新設(F4-fix #5、2026-06-27)
+- ユーザー非依存「みんなの定番」。MVP は売上/レビュー無のため **カタログ代表性(median Lab centroid への
+  Euclidean 距離小=汎用)で代用**(本番は売上/レビューに差し替え前提・算出根拠をコード明記)。決定的。
+  `test_popular_static_ranking` 追加(test_v13_endpoints 計16)。
+
+### openapi.json 再生成 CI(`openapi-sync.yml`、具体化・次バッチ運用)
+- `openapi.json` が 6/15(A3 の /v14 追加前)で陳腐化 → gen 型に v14 欠落(F2本体で手書き暫定)。
+  `app.openapi()` を clean Linux で dump し artifact 化(ローカルは skimage でハング)。型生成は
+  color-capture の `gen:api-types` で実行。再発防止。`workflow_dispatch`(マージ後 or test.yml 折込で起動)。
 
 ---
 
