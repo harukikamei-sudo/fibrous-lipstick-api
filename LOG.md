@@ -861,6 +861,80 @@ v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦�
 
 ---
 
+## エポック 15: v14 推薦体験改修(A1〜A5 / 2026-06-15、ブランチ feat/v14)
+
+### 背景
+発表 FB「精度の数字より Mina が納得して買えるか」→ 推薦体験(シーン質問〜ペア比較〜
+推薦表示〜購入)の改修(`cc_prompts_v14.md` + `agenda_v14.md`)。API は Haruki、撮影/AR は Kawano。
+**v13 系は完全温存し追加・新設のみ**(Kawano の既存フロントを壊さない)。全コミット CI(Linux)green。
+
+### A5(API半): OpenAPI → TypeScript 型自動生成(`cda99d8`)
+- `scripts/export_openapi.py`(`app.openapi()` 直ダンプ、sort_keys 安定出力)→ `openapi.json`。
+- フロントは `openapi-typescript` で `apiTypes.gen.ts` 生成(color-capture 側、後述)。手書き
+  `apiTypes.ts` との乖離リスクを断つ。完全置換は F2/F4。
+
+### A2 + A2-fix + evidence: reasons / candidate_count / 来歴(`878a6e9`, `45856ab`)
+- **reasons**(推薦理由の構造化・文章化はフロント): color/pref percentile(候補プール内の順位率=
+  絶対閾値なし)、top_axes(μ_pref·x20>0 かつ var≤RHO·TAU2[RHO=0.5]、is_系↔連続軸の共線性は
+  連続軸を優先表示=表示規則のみスコア無影響)、product_traits、`AXIS_LABELS_JA`。
+- **決定性**(A2-fix): 安定ソート `(-r_final, product_id)` + next_best 同点タイブレーク。
+- **candidate_count**(A2-fix): ★当初 fix 定義「R_final>プール中央値の個数」は**中央値分割が常に
+  ≈N/2 で観測が進んでも減らない**ため破棄。**competitive set 方式**に読み替え:
+  `threshold = score[N位] − margin·(1位−N位)`(margin=0.15)、`count = #{R_final≥threshold}`。
+  退化時は TOP-N。事後が尖るほど減る。`CATALOG_SIZE` も返す。**文書と実装の食い違い(§Q4 事件)
+  再発防止のためコミット/モデル/コメントに読み替えを明記**。
+- **evidence**(来歴): `UserState.pref_evidence`(軸名→pair_id)+ `Observation.source_pair_id`。
+  `bayesian.compute_pref_evidence` が精度寄与 x²/σ² 大の pair_id を記録(更新式は不変)。
+  reasons.top_axes.evidence に充填。保持先は UserState(v13/v14 両対応・往復設計に乗る)。
+
+### A1: シーン事前 + I_dialog + x20軸確定(`3388205`)
+- `PairApplyRequest.scenes` / `UserState.scenes` 追加(未指定なら従来挙動=完全後方互換)。
+- `scene_priors.build_pref_prior(scenes)` で θ_pref 事前を構築(flat → シーン依存)。SCENE_MU_PREF は
+  Haruki が設計した完成版(20軸×4シーン・符号衝突ルール)を**そのまま採用・再設計せず**配置。
+- **`constants.py` を新設し TAU2_PREF を一元化**(pair_compare ⇄ scene_priors の循環 import 回避)。
+- **I_dialog**(familiarity 第1項): 選択シーン言及軸で商品 x20>0.5 なら dialog_named=True →
+  reasons.scene_match も実値化。閾値 `DIALOG_X20_THRESHOLD=0.5`。
+- **x20 軸定義を確定宣言**(catalog_x20 docstring / KAWANO_INTERFACE / KAWANO_HANDOFF §Q4 の
+  仮20軸=transparency/mature 等を廃止、正は `catalog_x20.AXIS_NAMES`)。AR 印象タグはコンシェルジュ
+  発話に吸収(独立タグ UI は作らない)。
+
+### A3: v14 逐次ペア比較(最大EIG・effective_lab)(`2957eb4`)
+- `/v13` 完全温存し `/v14/pair_compare/start`・`next` 新設。固定 N=8 問・逐次・最大EIG選択
+  (動的打ち切りなし=進捗バー終端を見せる UX 確定仕様)。session はクライアント往復。
+- **EIG_pair = Σ_c P(c)·KL(q_c‖q)**(期待KL形・ガウス閉形式 = 相互情報量 I(choice;θ))。
+  `q_c` は `bayesian.apply_observations` と**同一経路**(更新と EIG の完全整合・サンプリング不要)。
+  KL は θ_color(3)+θ_pref(20)和。期待KL は H(prior)−E[H(post)] に厳密一致。
+- **選択確率 P(c) = Bradley-Terry** `σ(β_BT·(fit差))`。β_BT=`active_learning.SLOPE_DEFAULT`(0.25)
+  流用。de50 は2側の差で相殺。観測ノイズは実更新と同じペア σ²(色 `pair_color≈20.83`/世界観0.8)。
+- **ラプラス不使用(案1)**: 更新=厳密ガウス共役、選択確率=事後平均で1点プラグイン。案2(BT尤度+
+  ラプラス、ヘッセ `β_BT²·p(1−p)·∇z∇zᵀ`)は Phase 2 の精度詰め用に温存。
+- **v14 は観測とモデル整合のため色ペアの観測 Lab に effective_lab(lip+μ_thickness の K-M)を使用**
+  (v13 の .lab マスストーンではなく)。フロントはこれで本人の唇を再着色。
+- `best_pair` は EIG最大・**同点 pair_id 昇順で決定的**・**同一ペアは二度出さない**(asked 追跡)。
+- 正直な非一貫(観測が違うことに起因・意図的): 単体EIG=絶対like(de50あり・dislike非更新)、
+  ペア=相対選択(de50消える・両枝更新)。KL機構は共有、確率モデルと σ² 値だけ別。`pair_eig.py`。
+
+### 検証運用の知見(重要)
+- **macOS Gatekeeper の .so 初回スキャンが、並行/連続の重プロセス(skimage/scipy import、
+  TestClient、tsc)で停止(CPU≈0)する**。ローカルでテストが完走しない事象が頻発 → **CI(クリーン
+  Linux)で検証する運用に切り替え**(`gh workflow run test.yml --ref feat/v14`)。純ロジック(skimage
+  非依存: bayesian/scene_priors)はローカルでも可。コード起因でなく環境問題と切り分け済み。
+- テスト数: bayesian 11 / recommend_v2 22 / active_learning 8 / scene_priors 5 / v13_endpoints /
+  v13_flow / v14_flow 4 / 物理系(km/lab)。CI に scene_priors・v14_flow を追加。
+
+### 未確定(A4 で確定予定)
+- **C(EIG の σ²: 色ペアに pair_color≈20.83)/ D(β_BT=0.25)** は承認済みだが、**色ペアの色KLが
+  小さく出るため色 vs 世界観ペアの EIG スケールが偏らないか** を A4 で必ず検証 → 偏れば C の値か
+  正規化、D の β_BT を見直す。`N_PAIRS=8` も A4 次第で 7 に下げる可能性。
+
+### フロント(color-capture / feat/v14-recommend、push 済)
+- **A5フロント半**(`f1886e4`): `openapi-typescript` 導入 + `apiTypes.gen.ts` 生成 + 手書きとの差分
+  レポート(手書きは v14 型を欠き命名もズレ。F2/F4 で移行)。
+- **F1**(`5c91c5e`): シーン選択ステップ `SceneStep`(4択・複数選択、scene_priors.SCENE_LABELS と
+  同一文字列)を intro→capture_wrist 間に挿入。session に scenes 追加(末尾追記=マージ面積最小)。
+
+---
+
 ## 残課題(後続のため)
 
 1. **`healthy_pink × イエベ秋 = 0.60`** が唯一の acceptable。境界ケース、深追いせず。
