@@ -932,6 +932,25 @@ v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦�
   レポート(手書きは v14 型を欠き命名もズレ。F2/F4 で移行)。
 - **F1**(`5c91c5e`): シーン選択ステップ `SceneStep`(4択・複数選択、scene_priors.SCENE_LABELS と
   同一文字列)を intro→capture_wrist 間に挿入。session に scenes 追加(末尾追記=マージ面積最小)。
+- **F2**(2026-06-27): `recolorLips(pixels, mask, targetLab, options)` を `color.ts` に純関数で追加
+  (a/b 置換 + L 偏差保持=陰影/しわ温存、入力非破壊)。`labToRgb`(rgbToLab の逆)を color.ts に集約し
+  `colorPreview.labToHex` を再利用化(Lab→sRGB 重複解消)。`lipDetection.ts` は不変。Kawano の AR
+  本実装統合までの簡易レンダラ・コンポーネント非依存。※ プレビューの完全配線(マスク plumbing)は
+  PairCompareStep v14(F2本体)で行う。SampleResult は cropDataUrl のみ保持・mask 未保持のため。
+- **F3**(2026-06-27): Concierge scaffold。`conciergeScript.ts`(テンプレート方式・LLM不使用)に
+  3フェーズ選択ロジック `selectSpeech(ctx)` + step_intro/axis_realization/reason_*/serendipity/
+  decision の器 + 仮テキスト(文面は Kawano 3パターン待ち=全 TODO)。`Concierge.tsx`(フローティング
+  吹き出し + プレースホルダ妖精アバター + 同一軸二度言わない/予算最大3の管理)を page.tsx に全ステップ
+  共通マウント。`CONCIERGE_RHO=0.5` を API `recommend_v2.RHO_CONFIDENT` と同期(コメントで出どころ明記)。
+- **F4-fix(未着手・次バッチ)**: 依存のため後続。理由=(1) TOP-5 唇プレビューと「145→…→5」の
+  絞り込みカウンタの**漸減演出は v14 ペアフロー(F2本体=PairCompareStep)が前提**、(2) #5 全体ランキングは
+  API `/v13/popular` が**未実装**(A2 新設予定が欠落)、(3) 色別 x20 補正の人間判断(下記)がプレビュー色に
+  影響し得る。アンカー4+回転1/スライダー/デッドバンドεは全廃方針(現 RecommendStep に未導入なので
+  「廃止」は実質達成済み)。
+
+> ⚠️ ローカル検証不可: color-capture の `tsc --noEmit` / `next lint` は本セッションの sandbox で
+> Gatekeeper の .so/バイナリ コールド起動ハングにより実行できず(API の skimage と同根)。F2/F3 の TS は
+> 手動レビューで確定。**実ターミナルで `npm run lint` / `npx tsc --noEmit` の実行を推奨**。
 
 ---
 
