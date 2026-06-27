@@ -39,7 +39,9 @@ import pair_compare as pc                # noqa: E402
 import pair_eig                          # noqa: E402
 import recommend_v2 as rv2               # noqa: E402
 import scene_priors                      # noqa: E402
-from catalog_x20 import AXIS_NAMES, X20_COL_NAMES, load_x20_from_row  # noqa: E402
+from catalog_x20 import (                # noqa: E402
+    AXIS_NAMES, X20_COL_NAMES, apply_color_correction, load_x20_from_row,
+)
 from constants import TAU2_PREF          # noqa: E402
 from models_v13 import (                 # noqa: E402
     KMTableRow, LabValue, LabValue as LV, RecommendV2Request,
@@ -77,8 +79,12 @@ def _load_catalog() -> List[Dict]:
     return rows
 
 
-def _km_table(catalog: List[Dict], mask_is: bool = False) -> List[KMTableRow]:
-    """全カタログ × 21段の applied_Lab(_km_table_for_user 相当)。mask_is で is_系3軸を0に。"""
+def _km_table(catalog: List[Dict], mask_is: bool = False, gamma: float = 0.0) -> List[KMTableRow]:
+    """全カタログ × 21段の applied_Lab(_km_table_for_user 相当)。mask_is で is_系3軸を0に。
+
+    gamma>0 で色別 sheer 補正を **recommend 用の x20(km_table)にのみ**適用する。
+    matching / true_pref / pair は baseline(p["_x20"])のまま=ground truth 固定。
+    """
     lip = [LIP.L, LIP.a, LIP.b]
     rows: List[KMTableRow] = []
     for p in catalog:
@@ -89,6 +95,9 @@ def _km_table(catalog: List[Dict], mask_is: bool = False) -> List[KMTableRow]:
             a = km.compute_applied_lab(lip, ks, s, i / 20.0)
             applied.append(LV(L=float(a[0]), a=float(a[1]), b=float(a[2])))
         x20 = list(p["_x20"])
+        if gamma > 0.0:
+            pl = p["_lab"]
+            x20 = apply_color_correction(x20, pl[0], pl[1], pl[2], gamma)
         if mask_is:
             for j in IS_AXES_IDX:
                 x20[j] = 0.0
@@ -413,6 +422,39 @@ def main() -> None:
         res = [run_arm(s, catalog, table, rb, 8, True, mask_is=mask) for s in PERSONA_SPECS]
         print(f"  {label}: avg σ²={statistics.mean(r['avg_var'] for r in res):.3f}, "
               f"hit={statistics.mean(r['hit'] for r in res):.2f}")
+
+    # ===== [x20] 色別 sheer 補正 γ スイープ(LOG エポック16 承認・採用 γ は人間判断)=====
+    print("\n## [x20] 色別 sheer 補正 γ スイープ(scene+8。matching/true_pref は baseline 固定)")
+    print("  採用ゲート: ①mina/aya Jaccard 低下 ②yuki≈0 維持 ③全体hit≥0.47 ④|Δsheer|≤γ")
+    print(f"{'γ':>5}{'mina/aya':>10}{'yuki/mina':>11}{'yuki/aya':>10}"
+          f"{'全体hit':>9}{'mina hit':>10}{'maxΔsheer':>11}")
+    i_sheer = AXIS_NAMES.index("sheer")
+    base_jac_ma = None
+    for gamma in (0.0, 0.1, 0.2, 0.3):
+        kt = _km_table(catalog, mask_is=False, gamma=gamma)
+        rb = {r.product_id: r for r in kt}
+        res = {s[0]: run_arm(s, catalog, kt, rb, 8, True, mask_is=False) for s in PERSONA_SPECS}
+
+        def _jac(x: str, y: str) -> float:
+            a, b = res[x]["top5"], res[y]["top5"]
+            return len(a & b) / len(a | b) if (a | b) else 0.0
+
+        overall_hit = statistics.mean(r["hit"] for r in res.values())
+        # |Δsheer| の最大(ゲート④)。baseline からの実変位(clip 後)。
+        max_dev = 0.0
+        if gamma > 0.0:
+            for p in catalog:
+                base = list(p["_x20"])
+                pl = p["_lab"]
+                corr = apply_color_correction(base, pl[0], pl[1], pl[2], gamma)
+                max_dev = max(max_dev, abs(corr[i_sheer] - base[i_sheer]))
+        jac_ma = _jac("mina", "aya")
+        if gamma == 0.0:
+            base_jac_ma = jac_ma
+        print(f"{gamma:>5.1f}{jac_ma:>10.2f}{_jac('yuki', 'mina'):>11.2f}"
+              f"{_jac('yuki', 'aya'):>10.2f}{overall_hit:>9.2f}"
+              f"{res['mina']['hit']:>10.2f}{max_dev:>11.3f}")
+    print(f"  (γ=0 の mina/aya Jaccard = baseline {base_jac_ma:.2f}。低下していれば collapse 解消の兆候)")
 
     _draw(arm_results, strat_curves)
     print("\n✅ A4 検証完了。要約と推奨を LOG.md に追記する。")
