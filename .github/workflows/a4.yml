@@ -1,0 +1,40 @@
+name: a4-validation
+
+# A4 検証ハーネス(分析スクリプト。ローカルは skimage の Gatekeeper ハングで動かないため
+# clean Linux の CI で回し、ログから数値を読む)。手動トリガー専用。
+on:
+  workflow_dispatch:
+
+jobs:
+  a4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system deps (libGL for skimage on headless Linux)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libgl1
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install matplotlib
+
+      - name: Run A4 validation harness
+        run: python scripts/figures/make_a4_validation.py
+
+      - name: Upload A4 figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a4-figures
+          path: docs/figures/a4_*.png
+          if-no-files-found: warn
