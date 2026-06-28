@@ -535,6 +535,33 @@ def main() -> None:
     print("\n✅ A4 検証完了。要約と推奨を LOG.md に追記する。")
 
 
+def _interpret_pair(la: LabValue, lb: LabValue) -> Tuple[str, str, float, float, float]:
+    """2色(eff_lab)の差を知覚軸に分解し、支配的な対比軸とラベルを返す。
+
+    a*b* 平面の差を「彩度(radial=ΔC*)」と「色相(tangential=C·Δhue 弧長)」に直交分解、
+    これに「明度(ΔL)」を加えた3成分の最大を支配軸とする(全て Lab スケールで比較可能)。
+    返り値: (支配軸, UXラベル, ΔL, ΔC*, Δhue°)。
+    """
+    dL = la.L - lb.L
+    ca = (la.a ** 2 + la.b ** 2) ** 0.5
+    cb = (lb.a ** 2 + lb.b ** 2) ** 0.5
+    dC = ca - cb
+    import math as _m
+    ha = _m.degrees(_m.atan2(la.b, la.a))
+    hb = _m.degrees(_m.atan2(lb.b, lb.a))
+    dh = (ha - hb + 180.0) % 360.0 - 180.0          # 符号付き -180..180
+    hue_arc = (ca + cb) / 2.0 * abs(_m.radians(dh))  # 色相回転の a*b* 弧長(Lab スケール)
+    comps = {"明度": abs(dL), "彩度": abs(dC), "色相": hue_arc}
+    dom = max(comps, key=lambda k: comps[k])
+    if dom == "明度":
+        label = "明るい ⇔ 深い"
+    elif dom == "彩度":
+        label = "鮮やか ⇔ くすみ/ヌード"
+    else:
+        label = "黄み(コーラル)⇔ 青み(ローズ)" if (la.b - lb.b) >= 0 else "青み(ローズ)⇔ 黄み(コーラル)"
+    return dom, label, dL, dC, dh
+
+
 def _mk_color_pair(pair_id: str, ra: Dict, rb: Dict) -> PairQuestion:
     def _item(r: Dict) -> PairItem:
         return PairItem(
@@ -599,6 +626,31 @@ def _explore_separating_color_pairs(catalog: List[Dict], km_table: List[KMTableR
         print(f"  {label:>12}{de:>13.2f}{jac:>14.2f}")
     print("  → 分離色ペアで ΔE(μ_color)>0 かつ Jaccard<1.00 なら collapse 解消の実証"
           "(PAIR_BANK 変更は人間判断)")
+
+    # --- 現行5色ペアが「実際に聞いていたこと」(意図ラベル vs eff_lab 実測対比)---
+    print("\n  現行5色ペアの実測対比(意図ラベル vs eff_lab の知覚軸分解):")
+    spec_label = {s[0]: s[4] for s in pc._PAIR_SPECS}  # pair_id -> 意図ラベル
+    cur_doms: Dict[str, int] = {}
+    for p in cur_color:
+        la, lb = eff[p.left.product_id], eff[p.right.product_id]
+        dom, lab, dL, dC, dh = _interpret_pair(la, lb)
+        cur_doms[dom] = cur_doms.get(dom, 0) + 1
+        print(f"    {p.pair_id:24} 意図「{spec_label.get(p.pair_id, '')}」→ 実測:{dom}({lab})  "
+              f"ΔL={dL:+.1f} ΔC*={dC:+.1f} Δhue={dh:+.0f}°")
+    print(f"    現行の実測支配軸の内訳: {cur_doms}(偏っていれば collapse の遠因)")
+
+    # --- 分離候補を支配軸でバケツ分け(分離力 × 意味性の選択材料)---
+    print("\n  分離候補を知覚軸でバケツ分け(各軸 上位3。decis=分離力 / 軸=UX で何を聞くか):")
+    buckets: Dict[str, List] = {"明度": [], "彩度": [], "色相": []}
+    for decis, a, b in seps:
+        dom, lab, dL, dC, dh = _interpret_pair(eff[a], eff[b])
+        buckets[dom].append((decis, a, b, lab, dL, dC, dh))
+    for axis in ("明度", "彩度", "色相"):
+        bl = sorted(buckets[axis], reverse=True)
+        print(f"    [{axis}] 分離候補 {len(bl)} 件:")
+        for decis, a, b, lab, dL, dC, dh in bl[:3]:
+            print(f"      {a[:22]:22} vs {b[:22]:22} decis={decis:4.1f}  {lab}  "
+                  f"ΔL={dL:+.0f} ΔC*={dC:+.0f} Δhue={dh:+.0f}°")
 
 
 def _setup_jp_font(matplotlib):
