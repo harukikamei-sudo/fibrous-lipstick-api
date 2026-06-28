@@ -194,31 +194,45 @@ def fig_reasons() -> str:
     return _save(fig, "kawano_reasons.png")
 
 
-# ============ 図5(日報/上長用・別枠): EIG vs ランダム vs 固定 の収束 ============
+# ============ 図5(日報/上長用・別枠): hit の「ばらつき」で安定性を見せる ============
 def fig_eig() -> str:
-    # 出典: [3] EIG vs random vs fixed 収束カーブ(persona 平均 hit、steps 0,2,4,6,8,10)
-    steps = [0, 2, 4, 6, 8, 10]
-    eig = [0.33, 0.13, 0.53, 0.47, 0.47, 0.47]
-    fixed = [0.33, 0.20, 0.47, 0.47, 0.47, 0.47]
-    rand = [0.33, 0.20, 0.40, 0.07, 0.27, 0.47]
+    # 出典: [eigbox] 最終(8問)hit。eig/fixed は決定的=0.467、random は 12 seed の分布。
+    #   random 12値: 0.20〜0.53(中央 0.37)。A4 所見「EIG の価値は hit でなく安定性」を可視化。
+    rand_vals = [0.20, 0.20, 0.33, 0.33, 0.33, 0.33, 0.40, 0.40, 0.47, 0.47, 0.47, 0.53]
+    eig_v, fixed_v = 0.467, 0.467
 
-    fig, ax = plt.subplots(figsize=(7.6, 4.8))
-    ax.plot(steps, eig, "o-", color=GREEN, lw=2.4, ms=7, label=L("能動学習(EIG)", "active (EIG)"))
-    ax.plot(steps, fixed, "^--", color=BLUE, lw=1.7, ms=6, label=L("固定順", "fixed order"))
-    ax.plot(steps, rand, "s:", color=RED, lw=1.7, ms=6, label=L("ランダム", "random"))
-    ax.set_xlabel(L("回答した質問数", "# questions answered"))
-    ax.set_ylabel(L("hit率(高いほど良い)", "hit rate (higher=better)"))
-    ax.set_xticks(steps)
+    fig, ax = plt.subplots(figsize=(7.8, 4.8))
+    # ランダム = 箱ひげ + 素点(運次第で広くばらつく)
+    bp = ax.boxplot([rand_vals], positions=[1], widths=0.55, patch_artist=True,
+                    medianprops=dict(color="black", lw=1.6),
+                    whiskerprops=dict(color=RED), capprops=dict(color=RED),
+                    flierprops=dict(markeredgecolor=RED))
+    bp["boxes"][0].set_facecolor(RED)
+    bp["boxes"][0].set_alpha(0.45)
+    ax.scatter([1] * len(rand_vals), rand_vals, color=RED, alpha=0.6, s=22, zorder=3)
+    # eig / fixed = 決定的(seed 非依存)→ 1点
+    ax.scatter([2], [eig_v], color=GREEN, s=150, marker="D", zorder=3)
+    ax.scatter([3], [fixed_v], color=BLUE, s=150, marker="D", zorder=3)
+    ax.axhline(eig_v, color=GREEN, ls="--", lw=1.0, alpha=0.5)
+    for xi, v in ((2, eig_v), (3, fixed_v)):
+        ax.annotate(f"{v:.2f}", (xi, v), xytext=(0, 10), textcoords="offset points",
+                    ha="center", fontsize=11, fontweight="bold")
+    ax.annotate(L("運次第で 0.20〜0.53\n(中央 0.37)", "luck: 0.20–0.53\n(median 0.37)"),
+                (1, 0.20), xytext=(1.0, 0.08), ha="center", color=RED, fontsize=9)
+    ax.set_xticks([1, 2, 3])
+    ax.set_xticklabels([L("ランダム\n(12通りの運)", "random\n(12 seeds)"),
+                        L("能動学習(EIG)\n決定的", "active (EIG)\ndeterministic"),
+                        L("固定順\n決定的", "fixed\ndeterministic")])
+    ax.set_ylabel(L("hit率(8問終了時・高いほど良い)", "hit rate at Q8 (higher=better)"))
     ax.set_ylim(0, 0.62)
-    ax.legend(loc="lower right")
-    ax.annotate(L("ランダムは序盤の悪手で急落", "random collapses on early mistakes"),
-                (6, 0.07), xytext=(6.2, 0.24), color=RED, fontsize=9, ha="center",
-                arrowprops=dict(arrowstyle="->", color=RED))
-    ax.annotate(L("EIG は4問で最高精度", "EIG peaks by Q4"),
-                (4, 0.53), xytext=(3.2, 0.585), color=GREEN, fontsize=9, ha="center")
-    ax.set_title(L("能動学習(EIG)は早く高精度で安定 / ランダムは不安定",
-                   "Active (EIG) is fast & stable; random is unstable"),
-                 fontsize=12.5, fontweight="bold")
+    ax.set_title(L("ランダムは運次第で 0.20〜0.53 とばらつく / 能動学習は安定して 0.47",
+                   "Random swings 0.20-0.53 by luck; active is a stable 0.47"),
+                 fontsize=12, fontweight="bold")
+    fig.text(0.5, -0.01,
+             L("※本図は最終8問の精度。序盤(0→2問)は推定が粗く hit が一時低下するが4問で回復"
+               "(0.33→0.13→0.53、逐次ベイズの過渡)",
+               "* Q8 accuracy. Early dip (Q0→Q2) is a Bayesian transient, recovers by Q4 (0.33→0.13→0.53)"),
+             ha="center", fontsize=8, color="#666")
     return _save(fig, "kawano_eig.png")
 
 
