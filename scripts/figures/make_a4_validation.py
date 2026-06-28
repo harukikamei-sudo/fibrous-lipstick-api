@@ -456,6 +456,73 @@ def main() -> None:
               f"{res['mina']['hit']:>10.2f}{max_dev:>11.3f}")
     print(f"  (γ=0 の mina/aya Jaccard = baseline {base_jac_ma:.2f}。低下していれば collapse 解消の兆候)")
 
+    # ===== [diag] collapse 機序の実数確認(scene+8 学習後)— オプション(a)=====
+    # γ スイープが「sheer 補正は無反応」を示した(不採用)。真因を実数で確定する:
+    # 色項 −α·ΔE(μ_color) が好み項 μ_pref·x20 を桁で支配しているか / mina/aya の
+    # μ_color 収束先が近いか / 好み項で分離できる余地(色項拮抗×好み項相違)があるか。
+    print("\n## [diag] collapse 機序の実数確認(scene+8 学習後)")
+    ALPHA = 3.0  # recommend 既定 α(色項 −α·ΔE の係数)
+    diag = {s[0]: run_arm(s, catalog, km_table, row_by_id, 8, True, mask_is=False)
+            for s in PERSONA_SPECS}
+
+    # (1) 学習後 μ_color の近さ
+    print("\n  (1) 学習後 μ_color(3人がどれだけ近いか)")
+    mcs = {}
+    for k in ("mina", "aya", "yuki"):
+        mc = diag[k]["user"].theta_color.mu
+        mcs[k] = mc
+        print(f"    {k:>5}: μ_color = L{mc.L:6.1f} a{mc.a:6.1f} b{mc.b:6.1f}")
+    print(f"    ΔE2000(mina,aya)={delta_e_2000(mcs['mina'], mcs['aya']):5.2f}  "
+          f"ΔE(mina,yuki)={delta_e_2000(mcs['mina'], mcs['yuki']):5.2f}  "
+          f"ΔE(aya,yuki)={delta_e_2000(mcs['aya'], mcs['yuki']):5.2f}")
+
+    # (2) μ_pref 主要軸(|μ_pref| 上位5)
+    print("\n  (2) μ_pref 主要軸(|μ_pref| 上位5)")
+    for k in ("mina", "aya", "yuki"):
+        mp = diag[k]["user"].theta_pref.mu
+        order = sorted(range(20), key=lambda j: -abs(mp[j]))[:5]
+        print(f"    {k:>5}: " + ", ".join(f"{AXIS_NAMES[j]}={mp[j]:+.2f}" for j in order))
+
+    # (3) mina/aya の TOP5 f-score 内訳(色項 −α·ΔE / 好み項 μ_pref·x20)
+    print("\n  (3) TOP5 f-score 内訳(色項 −α·ΔE / 好み項 μ_pref·x20)")
+    res_list = {}
+    by_id = {}
+    for k in ("mina", "aya"):
+        res = recommend_v2(RecommendV2Request(user=diag[k]["user"], km_table=km_table, top_n=140))
+        res_list[k] = res.results
+        by_id[k] = {it.product_id: it for it in res.results}
+        print(f"    --- {k} TOP5 ---")
+        cterms = []
+        pterms = []
+        for it in res.results[:5]:
+            ct = -ALPHA * it.delta_e_to_color
+            cterms.append(abs(ct))
+            pterms.append(abs(it.pref_match))
+            print(f"      {it.product_id[:26]:26} 色項={ct:8.2f}  好み項={it.pref_match:7.3f}  "
+                  f"r_final={it.r_final:7.2f}")
+        print(f"      {k} TOP5 平均: |色項|={statistics.mean(cterms):.2f}  "
+              f"|好み項|={statistics.mean(pterms):.3f}  比={statistics.mean(cterms)/max(1e-9, statistics.mean(pterms)):.0f}x")
+
+    # (4) 色項ほぼ同じ × 好み項が分かれる商品(= 好み項の重みを上げれば分離余地)
+    print("\n  (4) 色項拮抗(下位25%)× 好み項が分かれる商品の有無")
+    shared = set(by_id["mina"]) & set(by_id["aya"])
+    rows_sep = []
+    for pid in shared:
+        im, ia = by_id["mina"][pid], by_id["aya"][pid]
+        d_color = abs(-ALPHA * im.delta_e_to_color - (-ALPHA * ia.delta_e_to_color))
+        d_pref = abs(im.pref_match - ia.pref_match)
+        rows_sep.append((d_color, d_pref, pid))
+    color_diffs = sorted(r[0] for r in rows_sep)
+    thr_color = color_diffs[len(color_diffs) // 4] if color_diffs else 0.0
+    cands = sorted(((dp, pid) for dc, dp, pid in rows_sep if dc <= thr_color), reverse=True)
+    print(f"    色項差の下位25%閾値 ≤{thr_color:.2f}。その中で好み項差が大きい商品 上位:")
+    for dp, pid in cands[:5]:
+        print(f"      {pid[:26]:26} 好み項差={dp:.3f}")
+    if cands:
+        print(f"    → 色項が拮抗する商品でも好み項差は平均 {statistics.mean(d for d, _ in cands):.3f}。"
+              f"色項オーダー(全商品平均差 {statistics.mean(color_diffs):.1f})と比べ、好み項で分離するには"
+              f"好み項重みを ~{statistics.mean(color_diffs) / max(1e-9, statistics.mean(d for d, _ in cands)):.0f}x 必要。")
+
     _draw(arm_results, strat_curves)
     print("\n✅ A4 検証完了。要約と推奨を LOG.md に追記する。")
 
