@@ -488,7 +488,8 @@ def main() -> None:
     res_list = {}
     by_id = {}
     for k in ("mina", "aya"):
-        res = recommend_v2(RecommendV2Request(user=diag[k]["user"], km_table=km_table, top_n=140))
+        # top_n は API 上限 50。色項が同一(μ_color 一致)なら 50 件で十分に内訳・分離余地を見られる。
+        res = recommend_v2(RecommendV2Request(user=diag[k]["user"], km_table=km_table, top_n=50))
         res_list[k] = res.results
         by_id[k] = {it.product_id: it for it in res.results}
         print(f"    --- {k} TOP5 ---")
