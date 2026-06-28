@@ -138,6 +138,27 @@ def test_update_user_normal() -> None:
     print(f"  ✓ μ_thickness: {before_mu_t:.3f} → {new_mu_t:.3f}")
 
 
+def test_update_user_extras_accepted() -> None:
+    hr("/v13/update_user: extras(F4-fix #4 の kept/decided)を受理し更新を壊さない")
+    user = make_user()
+    r = client.post("/v13/update_user", json={
+        "user": user,
+        "observations": [{
+            "source": "ar_view_like",
+            "product_id": "rmd_blur_fudge_03",
+            "observed_lab": {"L": 46, "a": 42, "b": 21},
+            "thickness": 0.9,
+            "y": 1.0,
+            "extras": {"action": "decide", "kept": True, "decided": True},
+        }],
+    })
+    assert_status(r, 200, "POST /v13/update_user (extras 付き)")
+    d = r.json()
+    # extras はベイズ更新に未使用 = 通常どおり color/thickness が 1 件適用される
+    assert d["n_applied"]["theta_color"] == 1 and d["n_applied"]["theta_thickness"] == 1
+    print("  ✓ extras 付き観測を受理(更新は通常どおり)")
+
+
 def test_update_user_empty_obs_422() -> None:
     hr("/v13/update_user: observations 空は 422")
     user = make_user()
@@ -329,6 +350,7 @@ if __name__ == "__main__":
     test_pair_apply_no_pc_uses_neutral()
     # /v13/update_user
     test_update_user_normal()
+    test_update_user_extras_accepted()
     test_update_user_empty_obs_422()
     test_update_user_dislike_does_not_move_color()
     # /v13/recommend
@@ -344,4 +366,4 @@ if __name__ == "__main__":
     # /v13/popular
     test_popular_static_ranking()
     print("\n" + "=" * 50)
-    print("✅ /v13/* endpoints: 全 16 テスト合格")
+    print("✅ /v13/* endpoints: 全 17 テスト合格")

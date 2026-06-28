@@ -5,7 +5,7 @@ GAS+Spreadsheet が state を保持し、本 API はステートレス計算サ�
 更新後の状態を返す。永続化は本 API では行わない。
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -122,6 +122,11 @@ class Observation(BaseModel):
     )
     viewed_seconds: Optional[float] = None
     timestamp: Optional[str] = None
+    extras: Optional[Dict[str, Any]] = Field(
+        None,
+        description="拡張観測メタ(F4-fix #4)。例 {action:'view'|'keep'|'decide', kept:bool, "
+                    "decided:bool}。ベイズ更新には未使用=Phase2 のデータ収集用に保持するのみ。",
+    )
 
 
 # ============ ペア比較(Part II) ============

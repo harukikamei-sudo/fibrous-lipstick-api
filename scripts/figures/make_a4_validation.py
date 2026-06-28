@@ -44,7 +44,7 @@ from catalog_x20 import (                # noqa: E402
 )
 from constants import TAU2_PREF          # noqa: E402
 from models_v13 import (                 # noqa: E402
-    KMTableRow, LabValue, LabValue as LV, RecommendV2Request,
+    KMTableRow, LabValue, LabValue as LV, PairItem, PairQuestion, RecommendV2Request,
 )
 from recommend_v2 import delta_e_2000, effective_lab, recommend_v2  # noqa: E402
 
@@ -524,8 +524,81 @@ def main() -> None:
               f"色項オーダー(全商品平均差 {statistics.mean(color_diffs):.1f})と比べ、好み項で分離するには"
               f"好み項重みを ~{statistics.mean(color_diffs) / max(1e-9, statistics.mean(d for d, _ in cands)):.0f}x 必要。")
 
+    # ===== [pairsep] 色ペアの分離力探索(オプション α・提示で止まる)=====
+    # 真因 = mina/aya の μ_color 収束一致(現色ペアが色嗜好を分けられない)。
+    # 「両者が逆の側を選ぶ色ペア」を探索 → それで学習させると μ_color が割れ Jaccard が下がるか検証。
+    # ※ PAIR_BANK 自体は変更しない(ペア定義は人間/Kawano 判断)。これは効果の提示まで。
+    print("\n## [pairsep] 色ペアの分離力探索(mina/aya を割る色ペア・提示のみ)")
+    _explore_separating_color_pairs(catalog, km_table, row_by_id)
+
     _draw(arm_results, strat_curves)
     print("\n✅ A4 検証完了。要約と推奨を LOG.md に追記する。")
+
+
+def _mk_color_pair(pair_id: str, ra: Dict, rb: Dict) -> PairQuestion:
+    def _item(r: Dict) -> PairItem:
+        return PairItem(
+            product_id=r["id"], name=r.get("color_name", "") or "",
+            lab=LabValue(L=r["_lab"][0], a=r["_lab"][1], b=r["_lab"][2]),
+            x20=list(r["_x20"]),
+        )
+    return PairQuestion(pair_id=pair_id, pair_type="color", left=_item(ra), right=_item(rb))
+
+
+def _explore_separating_color_pairs(catalog: List[Dict], km_table: List[KMTableRow], row_by_id) -> None:
+    mina_spec, aya_spec = PERSONA_SPECS[0], PERSONA_SPECS[1]
+    tc_m, tx_m = _true_pref(_matching(catalog, mina_spec), False)
+    tc_a, tx_a = _true_pref(_matching(catalog, aya_spec), False)
+
+    # 各商品の eff_lab(μ_t=0.5)→ 各 persona の true_color への ΔE を一度だけ算出
+    eff = {r.product_id: effective_lab(r, 0.5) for r in km_table}
+    by_cat = {p["id"]: p for p in catalog}
+    de_m = {pid: delta_e_2000(eff[pid], tc_m) for pid in eff}
+    de_a = {pid: delta_e_2000(eff[pid], tc_a) for pid in eff}
+    ids = [pid for pid in eff if pid in by_cat]
+
+    # 「mina と aya が逆の側を選ぶ」ペアを探索。decisiveness=両者の ΔE 差の小さい方。
+    seps = []
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            a, b = ids[i], ids[j]
+            mina_picks_a = de_m[a] < de_m[b]
+            aya_picks_a = de_a[a] < de_a[b]
+            if mina_picks_a != aya_picks_a:
+                decis = min(abs(de_m[a] - de_m[b]), abs(de_a[a] - de_a[b]))
+                seps.append((decis, a, b))
+    seps.sort(reverse=True)
+    print(f"  分離ペア候補(mina/aya が逆を選ぶ)= {len(seps)} 件 / 全 {len(ids)*(len(ids)-1)//2} ペア中")
+    print("  上位5(decisiveness=両者とも迷わない度):")
+    top_sep = seps[:5]
+    for decis, a, b in top_sep:
+        mside = "左" if de_m[a] < de_m[b] else "右"
+        print(f"    {a[:22]:22} vs {b[:22]:22}  decis={decis:5.2f}  mina={mside}")
+
+    # 検証: 現行色ペア vs 分離色ペアで学習 → μ_color の乖離 + top5 Jaccard
+    wv_pairs = [p for p in pc.PAIR_BANK if p.pair_type == "worldview"]
+    cur_color = [p for p in pc.PAIR_BANK if p.pair_type == "color"]
+    sep_color = [_mk_color_pair(f"sep_{n}", by_cat[a], by_cat[b]) for n, (_d, a, b) in enumerate(top_sep)]
+
+    def _sim(spec, color_pairs):
+        _key, _c, _cond, scenes = spec
+        tc, tx = _true_pref(_matching(catalog, spec), False)
+        user = pc.build_seed_user(LIP, pc_season="ブルベ夏", scenes=scenes, mu_thickness=0.5)
+        for p in list(color_pairs) + wv_pairs:
+            chose = _oracle_choice(p, tc, tx, row_by_id, 0.5)
+            user = pair_eig.apply_v14_choice(user, p, chose, row_by_id, 0.5)
+        return user, _top5_ids(user, km_table)
+
+    print("\n  検証: 色ペアを差し替えて学習 → μ_color 乖離 / top5 Jaccard(mina vs aya)")
+    print(f"  {'色ペア':>12}{'ΔE(μ_color)':>13}{'top5 Jaccard':>14}")
+    for label, cpairs in (("現行5色ペア", cur_color), ("分離5色ペア", sep_color)):
+        um, tm = _sim(mina_spec, cpairs)
+        ua, ta = _sim(aya_spec, cpairs)
+        de = delta_e_2000(um.theta_color.mu, ua.theta_color.mu)
+        jac = len(tm & ta) / len(tm | ta) if (tm | ta) else 0.0
+        print(f"  {label:>12}{de:>13.2f}{jac:>14.2f}")
+    print("  → 分離色ペアで ΔE(μ_color)>0 かつ Jaccard<1.00 なら collapse 解消の実証"
+          "(PAIR_BANK 変更は人間判断)")
 
 
 def _setup_jp_font(matplotlib):
