@@ -86,8 +86,9 @@ def fig_npairs() -> str:
     bars = ax.bar(labels, hit, color=colors, width=0.6)
     _bar_labels(ax, bars)
     ax.axhline(0.47, color=BLUE, ls="--", lw=1.3)
-    ax.text(3.45, 0.475, L("flat+10 の精度", "flat+10 level"),
-            color=BLUE, fontsize=9, ha="right")
+    # 基準線ラベルは scene+6(0.40)上の空白域に置く(各棒の値ラベルと重ねない)
+    ax.text(1.0, 0.485, L("flat+10 の精度", "flat+10 level"),
+            color=BLUE, fontsize=9, ha="center", va="bottom")
     ax.set_ylim(0, 0.6)
     ax.set_ylabel(L("hit率(TOP5 ∩ 好み商品 / 高いほど良い)", "hit rate (higher=better)"))
     ax.set_title(L("シーンを聞けば 7問で 10問と同じ精度(質問を3問削減)",
