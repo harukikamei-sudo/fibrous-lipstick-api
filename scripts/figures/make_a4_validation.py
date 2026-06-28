@@ -652,6 +652,47 @@ def _explore_separating_color_pairs(catalog: List[Dict], km_table: List[KMTableR
             print(f"      {a[:22]:22} vs {b[:22]:22} decis={decis:4.1f}  {lab}  "
                   f"ΔL={dL:+.0f} ΔC*={dC:+.0f} Δhue={dh:+.0f}°")
 
+    # --- たたき台5色ペア案(明度2/彩度1/色相2・商品重複なし)+ harness 試算 ---
+    print("\n  ── たたき台5色ペア案(明度2 / 彩度1 / 色相2 = 現行の明度欠落を是正・3軸カバー)──")
+    quota = [("明度", 2, "明るい ⇔ 深い"), ("彩度", 1, "鮮やか ⇔ くすみ"),
+             ("色相", 2, "黄み(コーラル)⇔ 青み(ローズ)")]
+    used: set = set()
+    draft: List = []  # (axis, a, b, decis, uxlabel)
+    for axis, n, uxlabel in quota:
+        cnt = 0
+        for decis, a, b, lab, dL, dC, dh in sorted(buckets[axis], reverse=True):
+            if a in used or b in used:
+                continue
+            draft.append((axis, a, b, decis, uxlabel))
+            used |= {a, b}
+            cnt += 1
+            if cnt >= n:
+                break
+    for i, (axis, a, b, decis, uxlabel) in enumerate(draft, 1):
+        print(f"    {i}. {a[:24]:24} vs {b[:24]:24}  「{uxlabel}」 [{axis}] decis={decis:.1f}")
+
+    # draft bank(色5=draft案 + 世界観5=現状維持)で scene+8 を試算
+    draft_color = [_mk_color_pair(f"draft_{i}", by_cat[a], by_cat[b])
+                   for i, (_ax, a, b, _d, _l) in enumerate(draft)]
+    draft_bank = draft_color + [p for p in pc.PAIR_BANK if p.pair_type == "worldview"]
+    orig_bank = pc.PAIR_BANK
+    pc.PAIR_BANK = draft_bank
+    try:
+        dres = {s[0]: run_arm(s, catalog, km_table, row_by_id, 8, True, False) for s in PERSONA_SPECS}
+    finally:
+        pc.PAIR_BANK = orig_bank
+
+    def _jc(x: str, y: str) -> float:
+        ta, tb = dres[x]["top5"], dres[y]["top5"]
+        return len(ta & tb) / len(ta | tb) if (ta | tb) else 0.0
+
+    de_ma = delta_e_2000(dres["mina"]["user"].theta_color.mu, dres["aya"]["user"].theta_color.mu)
+    print("\n  この5本(+世界観3、scene+8)で学習 → Jaccard(現行 mina/aya=1.00, yuki=0.00 と比較):")
+    print(f"    mina/aya  = {_jc('mina', 'aya'):.2f}  (現行 1.00 → 下がれば collapse 解消 / ΔE(μ_color)={de_ma:.1f})")
+    print(f"    mina/yuki = {_jc('mina', 'yuki'):.2f}   aya/yuki = {_jc('aya', 'yuki'):.2f}  (yuki 分離 ~0.00 維持か)")
+    print(f"    hit率: " + ", ".join(f"{k}={dres[k]['hit']:.2f}" for k in ("mina", "aya", "yuki")))
+    print(f"    色/世内訳: " + ", ".join(f"{k}={dres[k]['type_counts']}" for k in ("mina", "aya", "yuki")))
+
 
 def _setup_jp_font(matplotlib):
     from matplotlib import font_manager as fm
