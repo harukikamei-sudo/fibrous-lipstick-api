@@ -693,6 +693,119 @@ def _explore_separating_color_pairs(catalog: List[Dict], km_table: List[KMTableR
     print(f"    hit率: " + ", ".join(f"{k}={dres[k]['hit']:.2f}" for k in ("mina", "aya", "yuki")))
     print(f"    色/世内訳: " + ", ".join(f"{k}={dres[k]['type_counts']}" for k in ("mina", "aya", "yuki")))
 
+    _build_draft_v2(catalog, km_table, row_by_id, buckets, by_cat)
+
+
+_AX_LABEL = {
+    "明度": "明るい ⇔ 深い",
+    "彩度": "鮮やか ⇔ くすみ",
+    "色相": "黄み(コーラル)⇔ 青み(ローズ)",
+}
+
+
+def _build_draft_v2(catalog: List[Dict], km_table: List[KMTableRow], row_by_id,
+                    buckets: Dict[str, List], by_cat: Dict[str, Dict]) -> None:
+    """v2: 制約付き選定。採用ゲート = 全 persona hit≥現行 かつ 全ペア Jaccard≤現行
+    (新規 collapse ゼロ)かつ mina/aya は割れる。複数 recipe(明度穏やか案含む)を試し通過案を選ぶ。"""
+    print("\n  ══ たたき台 v2(制約付き: 全hit≥現行 + 全ペアJaccard≤現行=新規collapseゼロ + mina/aya割る)══")
+    pkeys = [s[0] for s in PERSONA_SPECS]            # mina, aya, yuki
+    ppairs = [("mina", "aya"), ("mina", "yuki"), ("aya", "yuki")]
+    wv = [p for p in pc.PAIR_BANK if p.pair_type == "worldview"]
+
+    def _run(bank):
+        ob = pc.PAIR_BANK
+        pc.PAIR_BANK = bank
+        try:
+            r = {s[0]: run_arm(s, catalog, km_table, row_by_id, 8, True, False) for s in PERSONA_SPECS}
+        finally:
+            pc.PAIR_BANK = ob
+        hits = {k: r[k]["hit"] for k in pkeys}
+        jacs = {}
+        for x, y in ppairs:
+            tx, ty = r[x]["top5"], r[y]["top5"]
+            jacs[(x, y)] = len(tx & ty) / len(tx | ty) if (tx | ty) else 0.0
+        return hits, jacs
+
+    base_hits, base_jacs = _run(pc.PAIR_BANK)
+    print(f"  現行基準: hit m/a/y = {base_hits['mina']:.2f}/{base_hits['aya']:.2f}/{base_hits['yuki']:.2f}"
+          f"  Jaccard ma/my/ay = {base_jacs[('mina','aya')]:.2f}/{base_jacs[('mina','yuki')]:.2f}/"
+          f"{base_jacs[('aya','yuki')]:.2f}")
+
+    def _short(axis: str, mode: str):
+        bl = list(buckets[axis])
+        if mode == "gentle":  # 支配軸の差が小さい順=過回転を抑えた穏やかな分離
+            key = {"明度": 4, "彩度": 5, "色相": 6}[axis]
+            bl.sort(key=lambda t: abs(t[key]))
+        else:                 # decis 降順
+            bl.sort(reverse=True)
+        return bl
+
+    def _pick(specs):
+        used: set = set()
+        chosen: List = []
+        for axis, mode, cnt in specs:
+            c = 0
+            for t in _short(axis, mode):
+                a, b = t[1], t[2]
+                if a in used or b in used:
+                    continue
+                chosen.append((axis, a, b, t[0]))
+                used |= {a, b}
+                c += 1
+                if c >= cnt:
+                    break
+        return chosen
+
+    recipes = [
+        ("明1穏/彩2/色2", [("明度", "gentle", 1), ("彩度", "decis", 2), ("色相", "decis", 2)]),
+        ("明1穏/彩1/色3", [("明度", "gentle", 1), ("彩度", "decis", 1), ("色相", "decis", 3)]),
+        ("明1穏/彩2/色2(色穏)", [("明度", "gentle", 1), ("彩度", "decis", 2), ("色相", "gentle", 2)]),
+        ("明2穏/彩1/色2", [("明度", "gentle", 2), ("彩度", "decis", 1), ("色相", "decis", 2)]),
+        ("明1decis/彩2/色2", [("明度", "decis", 1), ("彩度", "decis", 2), ("色相", "decis", 2)]),
+        ("明1穏/色4", [("明度", "gentle", 1), ("色相", "decis", 4)]),
+    ]
+    print(f"  {'recipe':<20}{'ma':>6}{'my':>6}{'ay':>6}{'hit m/a/y':>16}  判定")
+    evals = []
+    for name, specs in recipes:
+        chosen = _pick(specs)
+        if len(chosen) < 5:
+            print(f"  {name:<20}  (商品不足でスキップ)")
+            continue
+        bank = [_mk_color_pair(f"v2_{i}", by_cat[a], by_cat[b])
+                for i, (_ax, a, b, _d) in enumerate(chosen)] + wv
+        hits, jacs = _run(bank)
+        hit_ok = all(hits[k] >= base_hits[k] - 1e-9 for k in pkeys)
+        nocollapse = all(jacs[p] <= base_jacs[p] + 1e-9 for p in ppairs)
+        split = jacs[("mina", "aya")] < base_jacs[("mina", "aya")] - 1e-9
+        passed = hit_ok and nocollapse and split
+        evals.append((passed, name, chosen, hits, jacs))
+        verdict = "✅PASS" if passed else (
+            "split無" if not split else ("hit↓" if not hit_ok else "新collapse"))
+        hstr = f"{hits['mina']:.2f}/{hits['aya']:.2f}/{hits['yuki']:.2f}"
+        print(f"  {name:<20}{jacs[('mina','aya')]:>6.2f}{jacs[('mina','yuki')]:>6.2f}"
+              f"{jacs[('aya','yuki')]:>6.2f}{hstr:>16}  {verdict}")
+
+    passers = [e for e in evals if e[0]]
+    if passers:
+        passers.sort(key=lambda e: (e[4][("mina", "aya")],
+                                    -min(e[3][k] - base_hits[k] for k in pkeys)))
+        _ok, name, chosen, hits, jacs = passers[0]
+        print(f"\n  ✅ 採用ゲート通過 → v2 採用案 = 「{name}」(商品2/UXラベル/軸/decis):")
+        for i, (axis, a, b, decis) in enumerate(chosen, 1):
+            print(f"    {i}. {a[:24]:24} vs {b[:24]:24}  「{_AX_LABEL[axis]}」 [{axis}] decis={decis:.1f}")
+        print(f"  v2 試算: hit m/a/y={hits['mina']:.2f}/{hits['aya']:.2f}/{hits['yuki']:.2f}"
+              f"(現行 {base_hits['mina']:.2f}/{base_hits['aya']:.2f}/{base_hits['yuki']:.2f})"
+              f" / Jaccard ma/my/ay={jacs[('mina','aya')]:.2f}/{jacs[('mina','yuki')]:.2f}/"
+              f"{jacs[('aya','yuki')]:.2f}(現行 1.00/0.00/0.00)")
+    else:
+        print("\n  ❌ 全 recipe が採用ゲート未達(不採用)。最善案でも全hit≥現行 & 全Jaccard≤現行 を同時に満たせず。")
+        if evals:
+            best = min(evals, key=lambda e: (e[4][("mina", "aya")],
+                                             -min(e[3][k] - base_hits[k] for k in pkeys)))
+            print(f"    最善: 「{best[1]}」 hit={best[3]} jac_ma={best[4][('mina','aya')]:.2f} "
+                  f"my={best[4][('mina','yuki')]:.2f} ay={best[4][('aya','yuki')]:.2f} "
+                  f"→ 選定基準の再設計が必要(候補プール拡大 or 別軸構成)。")
+
 
 def _setup_jp_font(matplotlib):
     from matplotlib import font_manager as fm
