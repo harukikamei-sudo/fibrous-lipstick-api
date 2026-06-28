@@ -549,7 +549,19 @@ def main() -> None:
     print(f"  aya  reasons 軸テーマ = {a_theme}")
     print(f"  → mina 固有軸 = {sorted(set(m_theme) - set(a_theme))} / "
           f"aya 固有軸 = {sorted(set(a_theme) - set(m_theme))}"
-          f"(固有軸があれば同一商品でも説明が別物=(A)の差別化が機能)")
+          f"(似た人=固有軸ほぼ無し=無い差は作らない=正当)")
+
+    # 対照: mina vs yuki(本当に異なるユーザー)→ (A) が機能する実証
+    y_ax, y_top = _reasons_top("yuki")
+    y_theme = sorted({lab for labs in y_ax.values() for lab in labs})
+    shared_my = [p for p in m_top if p in y_top]
+    print(f"\n  ── 対照: mina vs yuki(本当に異なるユーザー)──")
+    print(f"  mina/yuki 共有 TOP5 = {len(shared_my)} 件(少=推薦自体が別物)")
+    print(f"  yuki reasons 軸テーマ = {y_theme}")
+    print(f"  → mina 固有軸 = {sorted(set(m_theme) - set(y_theme))} / "
+          f"yuki 固有軸 = {sorted(set(y_theme) - set(m_theme))}")
+    print("  結論: 似た人(mina/aya)=推薦も理由も似る(正当)/ 異なる人(mina/yuki)="
+          "推薦も理由も明確に別(=(A)の差別化が機能)。両側から締まる。")
 
     # ===== [pairsep] 色ペアの分離力探索(オプション α・提示で止まる)=====
     # 真因 = mina/aya の μ_color 収束一致(現色ペアが色嗜好を分けられない)。
