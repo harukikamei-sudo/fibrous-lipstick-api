@@ -194,13 +194,42 @@ def fig_reasons() -> str:
     return _save(fig, "kawano_reasons.png")
 
 
+# ============ 図5(日報/上長用・別枠): EIG vs ランダム vs 固定 の収束 ============
+def fig_eig() -> str:
+    # 出典: [3] EIG vs random vs fixed 収束カーブ(persona 平均 hit、steps 0,2,4,6,8,10)
+    steps = [0, 2, 4, 6, 8, 10]
+    eig = [0.33, 0.13, 0.53, 0.47, 0.47, 0.47]
+    fixed = [0.33, 0.20, 0.47, 0.47, 0.47, 0.47]
+    rand = [0.33, 0.20, 0.40, 0.07, 0.27, 0.47]
+
+    fig, ax = plt.subplots(figsize=(7.6, 4.8))
+    ax.plot(steps, eig, "o-", color=GREEN, lw=2.4, ms=7, label=L("能動学習(EIG)", "active (EIG)"))
+    ax.plot(steps, fixed, "^--", color=BLUE, lw=1.7, ms=6, label=L("固定順", "fixed order"))
+    ax.plot(steps, rand, "s:", color=RED, lw=1.7, ms=6, label=L("ランダム", "random"))
+    ax.set_xlabel(L("回答した質問数", "# questions answered"))
+    ax.set_ylabel(L("hit率(高いほど良い)", "hit rate (higher=better)"))
+    ax.set_xticks(steps)
+    ax.set_ylim(0, 0.62)
+    ax.legend(loc="lower right")
+    ax.annotate(L("ランダムは序盤の悪手で急落", "random collapses on early mistakes"),
+                (6, 0.07), xytext=(6.2, 0.24), color=RED, fontsize=9, ha="center",
+                arrowprops=dict(arrowstyle="->", color=RED))
+    ax.annotate(L("EIG は4問で最高精度", "EIG peaks by Q4"),
+                (4, 0.53), xytext=(3.2, 0.585), color=GREEN, fontsize=9, ha="center")
+    ax.set_title(L("能動学習(EIG)は早く高精度で安定 / ランダムは不安定",
+                   "Active (EIG) is fast & stable; random is unstable"),
+                 fontsize=12.5, fontweight="bold")
+    return _save(fig, "kawano_eig.png")
+
+
 def main() -> None:
     print(f"japanize-matplotlib: {'有効' if JP else '無し(英語ラベル)'}")
     fig_npairs()
     fig_collapse()
     fig_pairfix()
     fig_reasons()
-    print("✅ Kawano 図 4枚 生成完了")
+    fig_eig()  # 日報/上長用(協議4枚とは別枠)
+    print("✅ Kawano 図 5枚(協議4 + 日報用1)生成完了")
 
 
 if __name__ == "__main__":
