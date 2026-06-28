@@ -189,7 +189,7 @@ def _pick_next(strategy: str, user, asked: List[str], row_by_id, mu_t: float,
 
 def run_arm(spec, catalog, km_table, row_by_id, n_pairs: int,
             use_scenes: bool, mask_is: bool, strategy: str = "eig",
-            fam_weights=None, track_curve: bool = False) -> Dict:
+            fam_weights=None, track_curve: bool = False, seed: int = 0) -> Dict:
     """1ペルソナ・1条件を逐次シミュレートして指標を返す。track_curve で各問後の hit/σ²。"""
     key, _cats, _conds, scenes = spec
     matching = _matching(catalog, spec)
@@ -206,9 +206,9 @@ def run_arm(spec, catalog, km_table, row_by_id, n_pairs: int,
             mu[j] = 0.0
         user.theta_pref.mu = mu
 
-    # random 戦略は決定的シャッフル順を1度だけ固定(seed=ペルソナ名)
+    # random 戦略は決定的シャッフル順を1度だけ固定(seed で変えてばらつきを測れる)
     rng_order = list(pc.PAIR_BANK)
-    random.Random(f"{key}|{strategy}|rnd").shuffle(rng_order)
+    random.Random(f"{key}|{strategy}|{seed}").shuffle(rng_order)
 
     asked: List[str] = []
     type_counts = {"color": 0, "worldview": 0}
@@ -562,6 +562,31 @@ def main() -> None:
           f"yuki 固有軸 = {sorted(set(y_theme) - set(m_theme))}")
     print("  結論: 似た人(mina/aya)=推薦も理由も似る(正当)/ 異なる人(mina/yuki)="
           "推薦も理由も明確に別(=(A)の差別化が機能)。両側から締まる。")
+
+    # ===== [eigbox] EIG/fixed(決定的) vs random(複数seed)の hit ばらつき =====
+    # 目的: A4 所見「能動学習の価値は hit でなく安定性」を箱ひげ用に定量化。
+    # eig/fixed は決定的(seed 非依存)→ 1値。random は 12 seed の分布。flat seed・n=8。
+    print("\n## [eigbox] hit ばらつき(flat seed・n=8。eig/fixed=決定的, random=12 seed)")
+
+    def _avg_hit(strategy: str, sd: int = 0) -> float:
+        rs = [run_arm(s, catalog, km_table, row_by_id, 8, use_scenes=False,
+                      mask_is=False, strategy=strategy, seed=sd) for s in PERSONA_SPECS]
+        return statistics.mean(r["hit"] for r in rs)
+
+    eig_h = _avg_hit("eig")
+    fixed_h = _avg_hit("fixed")
+    rand_hs = sorted(_avg_hit("random", sd=s) for s in range(12))
+    print(f"  eig(決定的)   = {eig_h:.3f}")
+    print(f"  fixed(決定的) = {fixed_h:.3f}")
+    print(f"  random(12seed): min={rand_hs[0]:.3f} / med={statistics.median(rand_hs):.3f} / "
+          f"max={rand_hs[-1]:.3f} / 全値={[round(h, 2) for h in rand_hs]}")
+    print(f"  → random は seed(=どのペアが当たるか)次第で {rand_hs[0]:.2f}〜{rand_hs[-1]:.2f} と"
+          f"ばらつく / eig・fixed は決定的に {eig_h:.2f}・{fixed_h:.2f}(安定)")
+    # 序盤ディップの確認(strat_curves の eig hit: step0,2 = 0問→2問)。
+    _eig_curve = strat_curves["eig"]["hit"]
+    print(f"  [序盤ディップ] eig hit 0問={_eig_curve[0]:.2f} → 2問={_eig_curve[1]:.2f} → 4問="
+          f"{_eig_curve[2]:.2f}(回復)。観測1〜2件で色推定が粗く TOP5 が一時的に振れる"
+          f"(逐次ベイズの過渡。質問が増えると回復)")
 
     # ===== [pairsep] 色ペアの分離力探索(オプション α・提示で止まる)=====
     # 真因 = mina/aya の μ_color 収束一致(現色ペアが色嗜好を分けられない)。
