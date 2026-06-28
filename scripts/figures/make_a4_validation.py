@@ -524,6 +524,33 @@ def main() -> None:
               f"色項オーダー(全商品平均差 {statistics.mean(color_diffs):.1f})と比べ、好み項で分離するには"
               f"好み項重みを ~{statistics.mean(color_diffs) / max(1e-9, statistics.mean(d for d, _ in cands)):.0f}x 必要。")
 
+    # ===== [reasons] 戦略 (A) の実証: 色が近い mina/aya でも reasons.top_axes が別物か =====
+    # (A) = 色では分けない(色の好みが近いのは正当)。差別化は reasons + コンシェルジュ発話で出す。
+    # 同一商品でも mina(韓国/サチュレート)と aya(シアー/グロス)で top_axes が違えば (A) は機能する。
+    print("\n## [reasons] 戦略(A)検証: 色が近い mina/aya で reasons.top_axes が別物になるか")
+
+    def _reasons_top(key: str):
+        spec = next(s for s in PERSONA_SPECS if s[0] == key)
+        r = run_arm(spec, catalog, km_table, row_by_id, 8, True, mask_is=False)
+        res = recommend_v2(RecommendV2Request(user=r["user"], km_table=km_table, top_n=5))
+        ax = {it.product_id: [a.label for a in (it.reasons.top_axes if it.reasons else [])]
+              for it in res.results}
+        return ax, [it.product_id for it in res.results]
+
+    m_ax, m_top = _reasons_top("mina")
+    a_ax, a_top = _reasons_top("aya")
+    shared = [p for p in m_top if p in a_top]
+    print(f"  共有 TOP5 商品 = {len(shared)} 件。同一商品で top_axes が違えば (A) 成立:")
+    for p in shared:
+        print(f"    {p[:26]:26}  mina={m_ax.get(p, [])}  |  aya={a_ax.get(p, [])}")
+    m_theme = sorted({lab for labs in m_ax.values() for lab in labs})
+    a_theme = sorted({lab for labs in a_ax.values() for lab in labs})
+    print(f"  mina reasons 軸テーマ = {m_theme}")
+    print(f"  aya  reasons 軸テーマ = {a_theme}")
+    print(f"  → mina 固有軸 = {sorted(set(m_theme) - set(a_theme))} / "
+          f"aya 固有軸 = {sorted(set(a_theme) - set(m_theme))}"
+          f"(固有軸があれば同一商品でも説明が別物=(A)の差別化が機能)")
+
     # ===== [pairsep] 色ペアの分離力探索(オプション α・提示で止まる)=====
     # 真因 = mina/aya の μ_color 収束一致(現色ペアが色嗜好を分けられない)。
     # 「両者が逆の側を選ぶ色ペア」を探索 → それで学習させると μ_color が割れ Jaccard が下がるか検証。
