@@ -30,12 +30,19 @@ except Exception:
     from matplotlib import font_manager as _fm
     _names = {f.name for f in _fm.fontManager.ttflist}
     for _cand in ("Hiragino Sans", "YuGothic", "Hiragino Maru Gothic Pro",
-                  "Noto Sans CJK JP", "IPAexGothic", "Arial Unicode MS"):
+                  "Noto Sans CJK JP", "Noto Sans JP", "IPAexGothic", "Arial Unicode MS"):
         if _cand in _names:
             matplotlib.rcParams["font.family"] = _cand
             matplotlib.rcParams["axes.unicode_minus"] = False
             JP = True
             break
+    if not JP:  # 表記揺れ対策(Noto Sans CJK JP / Hiragino 系の family 名差)
+        for _n in _names:
+            if ("CJK" in _n) or ("Hiragino" in _n) or _n.startswith("Noto Sans JP"):
+                matplotlib.rcParams["font.family"] = _n
+                matplotlib.rcParams["axes.unicode_minus"] = False
+                JP = True
+                break
 
 import matplotlib.pyplot as plt  # noqa: E402
 
