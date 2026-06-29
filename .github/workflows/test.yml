@@ -77,11 +77,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install matplotlib
+      - name: Regenerate openapi.json (app.openapi() / ローカルは skimage でハングのため CI)
+        run: |
+          python - <<'PY'
+          import json
+          from app import app
+          spec = app.openapi()
+          with open("openapi.json", "w", encoding="utf-8") as f:
+              json.dump(spec, f, ensure_ascii=False, indent=2)
+          paths = sorted(spec.get("paths", {}))
+          print(f"openapi paths ({len(paths)}):")
+          for p in paths:
+              print(" ", p)
+          assert "/v14/pair_compare/start" in paths, "v14 が openapi に無い"
+          assert "/v13/popular" in paths, "popular が openapi に無い"
+          PY
       - name: Run A4 validation harness
         run: python scripts/figures/make_a4_validation.py
       - name: Generate Kawano figures (協議用 PNG)
         run: python scripts/figures/make_kawano_figures.py
-      - name: Upload figures
+      - name: Upload figures + openapi.json
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -89,4 +104,5 @@ jobs:
           path: |
             docs/figures/a4_*.png
             scripts/figures/kawano_*.png
+            openapi.json
           if-no-files-found: warn
