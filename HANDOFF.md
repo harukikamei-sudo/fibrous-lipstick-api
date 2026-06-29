@@ -3,9 +3,37 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-06-09 (Opus 4.8 / 1M context) — **個人化層ハードニング + 能動学習 rerank + ピッチ図**
-全テスト: 個人化層 47 件(bayesian 10 / recommend_v2 13 / active_learning 8 / v13_endpoints 16)
-+ v13_flow E2E + 物理系(km 8 / lab 3)。CI: GitHub Actions で Python 3.11/3.12 を自動回転
+最終更新: 2026-06-29 — **v14 推薦体験改修(A1〜A5 / F1〜F4)+ collapse 調査の決着**
+
+## 2026-06-15〜29 セッション(v14 推薦体験改修)★最新
+
+**ブランチ**: API=`feat/v14`(origin harukikamei-sudo・main より 39 先行 / main は不変)、
+フロント=`feat/v14-recommend`(別 repo **YK-0204/color-capture**・`~/Desktop/color-capture/`)。
+
+**実装済(全 CI green)**:
+- API: シーン事前分布(A1)/ 推薦理由 reasons(A2)/ 絞り込みカウンタ candidate_count(A2-fix)/
+  逐次ペア比較 `/v14/pair_compare/{start,next}`(A3・最大EIG・effective_lab)/ 全体ランキング `/v13/popular` /
+  `Observation.extras`(F4-fix・ベイズ更新不使用)。テスト: v13_endpoints 17 + v14_flow + scene_priors 等。
+- フロント: SceneStep(F1)/ recolorLips 純関数(F2)/ PairCompareStep v14化+唇プレビュー(F2本体)/
+  Concierge 器+選択ロジック(F3・文面は Kawano 3パターン待ち)/ RecommendStep 購入フロー shortlist(F4-fix)。
+  color-capture に CI(`ci.yml`・tsc --noEmit)追加。
+
+**C/D 確定(人間承認・LOG エポック16)**: N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / x20=20軸。
+中核成果=**scene+7 で flat+10 と hit 同等(問数3問削減)**。
+
+**collapse 調査の決着**: 似た合成ペルソナ(mina/aya)で TOP5 が同一化する現象を発見 →
+diag/pairsep/v1/v2/reasons の系列で「**色も好みも本質的に同一=人工的 edge、アルゴリズム欠陥でない**」と確定。
+**戦略(A)採用**(色では分けない・差別化は reasons+shortlist・色ペア据え置き)。(B)=実ユーザーで Phase2 再検証。
+協議資料: `KAWANO_V14_REVIEW.md` + `KAWANO_PAIRS_NOTE.md` + 図 `scripts/figures/kawano_*.png`。
+
+**運用メモ(重要)**: このマシンの sandbox は **skimage import / app import / tsc / npm が Gatekeeper でハング**。
+→ 検証は CI 経由(`test.yml` の workflow_dispatch `a4` ジョブ + color-capture `ci.yml`)。`openapi.json` も
+CI で再生成済み(`a4` ジョブ内で `app.openapi()` dump、6/15版の陳腐化解消)。詳細は [[feedback_macos_gatekeeper_ci]]。
+
+**人間/Kawano 待ち**: ① 色5ペア据え置き追認 ② F3 コンシェルジュ3パターン文面 ③ フロント `gen:api-types`
+再実行(新 openapi.json で)④(将来)PAIR_BANK 明度軸 / Phase2 実ユーザー検証。
+
+---
 
 ## 2026-06-05〜09 セッション(個人化層ハードニング + ピッチ図)
 

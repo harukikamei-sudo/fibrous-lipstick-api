@@ -354,11 +354,16 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/pair_compare/appl
 
 ## 10. 関連ドキュメント
 
+- **[KAWANO_V14_REVIEW.md](KAWANO_V14_REVIEW.md)** ★最新 — v14 協議用1枚(報告/確認/一緒に決める/お願い・15分)
+- **[KAWANO_PAIRS_NOTE.md](KAWANO_PAIRS_NOTE.md)** — 色ペアを変えない判断の根拠(collapse 調査)
 - **[SIMULATOR_GUIDE.md](SIMULATOR_GUIDE.md)** — 個人化が動く証拠(CLI 取説 + 数式)
-- **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** — API spec の技術詳細(curl 例・全フィールド説明)
-- **[HANDOFF.md](HANDOFF.md)** — 全体引き継ぎ(状態・履歴)
+- **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** — API spec の技術詳細(§4.7 に v14 追加分)
+- **[HANDOFF.md](HANDOFF.md)** — 全体引き継ぎ(冒頭が v14 最新状態)
 - **[DESIGN.md](DESIGN.md)** — 元の設計理論(K-M 数式・色彩学根拠)
-- **[LOG.md](LOG.md)** — 開発ログ(意思決定の理由)
+- **[LOG.md](LOG.md)** — 開発ログ(意思決定の理由・エポック16 が v14)
+
+> **v14(推薦体験改修)が一段落**。協議は `KAWANO_V14_REVIEW.md` を司会に。下記 §3 の握手は
+> `/v14/pair_compare/{start,next}`(逐次)と `/v13/popular`(みんなの定番)が増えた(詳細 KAWANO_INTERFACE §4.6/4.7)。
 
 ---
 

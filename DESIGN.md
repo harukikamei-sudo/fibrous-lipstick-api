@@ -495,3 +495,34 @@ pc_score: 4軸(L,a,b,C*) ユークリッド距離(=対矩形領域)、別物と�
 | 塗り重ね | `ui_app.COAT_OPTIONS` (1度=0.3 / 2度=0.6 / 3度=0.9 / しっかり=1.5) |
 | 色差 (ΔE2000) | `app._delta_e_ciede2000` (skimage.color.deltaE_ciede2000 委譲) |
 | テスト | `test_km.py`(性質1〜8) / `test_lab_utils.py` / `test_dark_swatch.py` |
+
+> **本章までは物理層(K-M)+ v1.3 個人化層の数理。v14(推薦体験)で足した数理は §11 を参照。**
+
+---
+
+## 11. v14 推薦体験の数理(追記・2026-06。詳細は LOG エポック15-16)
+
+物理層・スコア式(§5/§ Part IV-VI)は不変。v14 は「何を聞くか / どう説明するか」の層を追加:
+
+- **シーン事前分布**(`scene_priors.py`): 選択シーン→θ_pref の事前を寄せる。
+  `μ_pref ← (1−κ)·flat + κ·scene_μ`、確信 `κ=KAPPA=0.65`(A4 で確定)。複数シーンは平均。
+- **逐次ペアの EIG**(`pair_eig.py`): 次に聞くペアを期待情報利得で選ぶ。
+  `EIG(c) = Σ_y P(y)·KL(q_y‖q) = H(prior) − E[H(posterior)]`(期待KL=相互情報量 I(y;θ)、ガウス閉形式)。
+  選択確率は Bradley-Terry `P(left)=σ(β_BT·(fit_left−fit_right))`、`β_BT=0.25`。色ペアは θ_color(3)+θ_pref(20)、
+  世界観ペアは θ_pref のみ更新。同点は pair_id 昇順で決定的(二度出さない)。**N_PAIRS=8 確定**(scene+7 で flat+10 同等)。
+- **effective_lab**(`recommend_v2.effective_lab`): μ_thickness で 21 段 K-M テーブルを線形補間。v14 は観測色にこれを使う。
+- **推薦理由 reasons**(`recommend_v2._build_reasons`): `top_axes`=確信ある正寄与軸(`μ_pref·x20>0` かつ
+  `var ≤ ρ·τ²`, ρ=0.5)。パーセンタイルは候補プール基準の順位率(絶対閾値なし=自己校正)。
+- **絞り込みカウンタ candidate_count**(competitive set): `score[N位] − margin·(score[1位]−score[N位])`(margin=0.15)
+  以上の候補数。事後が尖るほど減る(中央値分割案は ≈N/2 一定で棄却)。
+- **採用しなかったもの(根拠は LOG エポック16)**: 色別 x20 補正(sheer 変調)は collapse に無効で不採用
+  (`CORRECTION_GAMMA=0` で無効化のまま残置)。collapse は「色の好みが近いユーザーは推薦も似る=正当」と判断(戦略A)。
+
+| v14 概念 | 実装 |
+|---|---|
+| シーン事前 | `scene_priors.build_pref_prior / KAPPA / scene_mentioned_axes` |
+| EIG ペア選択 | `pair_eig.eig_pair / best_pair / apply_v14_choice / theta_snapshot` |
+| reasons | `recommend_v2._build_reasons / _attach_reasons / _percentile_high_good` |
+| candidate_count | `recommend_v2._competitive_count` |
+| 全体ランキング | `app.v13_popular`(median Lab centroid 距離) |
+| 検証ハーネス | `scripts/figures/make_a4_validation.py`(CI の a4 ジョブ) |

@@ -679,6 +679,48 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/update_user \
 
 ---
 
+## v14 追加エンドポイント(2026-06 / `feat/v14`)
+
+### POST `/v14/pair_compare/start` — 逐次ペア比較の開始
+
+シーン+PC 事前で初期化し、**最大 EIG の first_pair** を返す。各ペアの left/right に
+`effective_lab`(唇に塗った想定 Lab)が付くのが v13 との差。セッションはクライアント往復方式。
+
+```bash
+curl -sX POST https://tamable-fibrous-lipstick-api.hf.space/v14/pair_compare/start \
+  -H 'Content-Type: application/json' \
+  -d '{"lip_lab":{"L":62,"a":22,"b":12},"scenes":["school","friends"],"pc_season":"ブルベ夏"}'
+# → {session, n_pairs_total:8, first_pair:{pair_id,pair_type,left/right:{...,effective_lab}}, candidate_count, catalog_size}
+```
+
+### POST `/v14/pair_compare/next` — 選択 → 更新 → 次のペア
+
+選択を観測としてベイズ更新し、残問あれば次の最大 EIG ペアを返す。**固定 N=8 問で `done:true`**。
+
+```bash
+curl -sX POST .../v14/pair_compare/next \
+  -d '{"session":<前レスポンスの session>,"pair_id":"color_01_bright_vs_deep","chose":"left"}'
+# → {session, done, next_pair|null, theta_snapshot:{pref_mu,pref_var,top_shrunk_axis}, candidate_count}
+```
+- `theta_snapshot`: 中間実況用(コンシェルジュが「透け感が好きみたいだね」)。同一ペアは二度出さない。
+
+### GET `/v13/popular` — みんなの定番(ユーザー非依存)
+
+```bash
+curl -s 'https://tamable-fibrous-lipstick-api.hf.space/v13/popular?top_n=5'
+# → {catalog_size, method, results:[{product_id,name,line_category,image_url,lab,representativeness}]}
+```
+- MVP は売上/レビューが無いため **カタログ代表性(中央 Lab=median centroid への近さ)で代用**(本番は売上に差替)。決定的。
+
+### `Observation.extras`(F4-fix・任意)
+
+`/v13/update_user` の観測に `extras:{action,kept,decided}` 等を付与可。**ベイズ更新には未使用**=Phase 2 のデータ収集用。
+`source_pair_id` も観測の来歴(reasons の evidence)用に追加済み。
+
+> v14 の全フィールド定義は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) §4.6/§4.7、最新 OpenAPI は `openapi.json`(CI 再生成済み)。
+
+---
+
 ## v1.3 トラブルシューティング
 
 | 症状 | 原因 / 対処 |

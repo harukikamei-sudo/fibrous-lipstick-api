@@ -342,6 +342,14 @@ products_with_lab.csv からロード。
 | **v1.3-I** | **GitHub Actions CI** | ✅ push/PR で Python 3.11/3.12 × 6 テスト群を自動実行 |
 | **v1.3-J** | **個人化層ハードニング**(dislike修正 / θ_explore配線 / EIG rerank / σ²較正) | ✅ LOG エポック13。後方互換維持・回帰テスト追加 |
 | **v1.3-K** | **ピッチ用 in-silico 図**(docs/figures 4枚 + 生成スクリプト) | ✅ LOG エポック14。本番コード経由・再現可能。⚠️「能動学習が最速」は本番では不成立と判明→図を再構成 |
+| **v14-A1〜A5** | **シーン事前 / reasons / 絞り込みカウンタ / 逐次EIGペア比較(/v14)/ OpenAPI型生成** | ✅ LOG エポック15-16。全 CI green。`feat/v14` |
+| **v14-popular** | **`GET /v13/popular`(ユーザー非依存の代表性ランキング)** | ✅ カタログ中央 Lab 近さで代用。test_v13_endpoints 17件 |
+| **v14-F1〜F4** | **フロント: SceneStep / recolorLips / v14ペアUI+唇プレビュー / Concierge / 購入フロー shortlist** | ✅ `feat/v14-recommend`(YK-0204/color-capture)。CI tsc green。文面は Kawano 待ち |
+| **v14-C/D** | **A4 検証 → 確定**(N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / 20軸) | ✅ LOG エポック16。scene+7 で flat+10 同等(問数3問減) |
+| **v14-collapse** | **似たペルソナの推薦同一化の調査** | ✅ 決着=合成ペルソナ固有(戦略A・色ペア据置)。Phase2 で実ユーザー再検証。`KAWANO_V14_REVIEW.md` |
+
+> **v14 の現況・運用は [HANDOFF.md](HANDOFF.md) 冒頭(2026-06-29)を参照**。
+> ⚠️ ローカルは skimage/tsc/npm が Gatekeeper でハング → 検証は CI(`test.yml` の workflow_dispatch `a4` ジョブ等)。
 
 ## v1.3 Kawanoさん interface(2026-05-29 実装)
 
