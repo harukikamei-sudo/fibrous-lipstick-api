@@ -76,10 +76,11 @@
 
 トーン: 妖精・やわらかいタメ口(`conciergeScript.ts` 冒頭にトーン定義 + 差し替え点 TODO あり)。
 
-### 4-2. `openapi.json` 再生成のタイミング合わせ
+### 4-2. フロントの型生成(`gen:api-types`)を一度回す
 
-v14 で API が増えたので、フロントの型生成(`gen:api-types`)の元になる `openapi.json` の更新が必要です
-(CI 化済み)。**いつ差し込むか**だけ合わせたい(更新後に `npm run gen:api-types` を一度回す想定)。
+`openapi.json` は **本セッションで再生成・コミット済み**(`/v14`・`/v13/popular` 等を反映。CI 経由)。
+残りは **color-capture 側で `npm run gen:api-types` を一度回す**だけ(新 `openapi.json` → `apiTypes.gen.ts` 再生成)。
+現状フロントは v14 型を手書き(`apiTypes.ts`)で暫定対応中=動作はするので、**どちらが・いつ回すか**だけ合わせたい。
 
 ---
 
@@ -87,7 +88,7 @@ v14 で API が増えたので、フロントの型生成(`gen:api-types`)の元
 
 - collapse が**合成ペルソナ固有**か、**実ユーザーデータで再検証**(今はユーザー不在で確定不可)。
 - 実 PAIR_BANK に**明度軸**を足す見直しは将来オプション(分離候補は抽出済み・現行は色相/彩度に偏り)。
-- `openapi.json` 再生成は CI 化済み(運用に乗せるだけ)。
+- `openapi.json` は再生成・コミット済み。残りは §4-2 のフロント `gen:api-types` のみ。
 
 ---
 
