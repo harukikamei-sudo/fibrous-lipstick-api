@@ -54,6 +54,7 @@ lip API は **state を持ちません**。リクエスト毎に caller(Kawano�
 | POST | `/v13/recommend`          | UserState → TOP-N 推薦(`rerank:true` で EIG 能動学習) |
 | POST | `/v14/pair_compare/start` | 逐次ペア比較の開始(最大EIGペア + effective_lab)。§4.6 |
 | POST | `/v14/pair_compare/next`  | 選択→更新→次の最大EIGペア(固定 N=8 問)。§4.6 |
+| GET  | `/v13/popular`            | ユーザー非依存「みんなの定番」(代表性ランキング)。§4.7 |
 
 ベース URL(本番):
 ```
@@ -328,7 +329,29 @@ POST /v14/pair_compare/next
 - **`theta_snapshot`**(中間実況用): `theta_pref` の現在 mu/var + 直前で σ² が最も縮んだ軸名。
   コンシェルジュ(F3)が「透け感が好きみたいだね」と実況するのに使う。
 - **`candidate_count`**(絞り込みカウンタ): その時点の事後での残候補数(competitive set・§ A2-fix)。
-- N_PAIRS は既定 8(`app.N_PAIRS_V14`)。A4 検証次第で 7 に下げる可能性。
+- N_PAIRS は既定 8(`app.N_PAIRS_V14`)。**A4 検証で 8 を確定**(scene+7 で flat+10 と hit 同等、+8 で σ²・世界観カバレッジに余裕)。
+
+---
+
+### 4.7 A3 以降に増えた差分(2026-06 追記。§4.1〜4.5 は A3 時点ベースのため、ここで補完)
+
+既存は後方互換のまま、以下を追加済み:
+
+- **`/v13/recommend` レスポンス**:
+  - `results[].reasons`: 推薦理由。`top_axes`(軸名・日本語ラベル・寄与・来歴 `evidence`)+ `product_traits` +
+    `color_percentile` / `pref_percentile` + `scene_match`。**文章化はフロント**(コンシェルジュ)が担当。
+  - `results[].is_serendipity`: 冒険枠(遠い×未知)フラグ。
+  - `candidate_count` / `catalog_size`: 絞り込みカウンタ用(R_final 中央値超えの実候補数 / プール総数)。
+- **`UserState.scenes`**(A1): シーン選択(`school` / `friends` / `date` / `special`)。事前分布 + reasons の
+  `scene_match` に使用。空配列なら従来挙動。
+- **`Observation.extras`**(F4-fix): `{action, kept, decided}` 等の任意メタ。**ベイズ更新には未使用**
+  (Phase 2 のデータ収集として保持するのみ)。`source_pair_id` も観測の来歴用に追加済み。
+- **`GET /v13/popular?top_n=N`**: ユーザー非依存の「みんなの定番」。MVP は売上/レビューが無いため
+  **カタログ代表性**(中央 Lab=median centroid への近さ)で代用。レスポンス `{catalog_size, method, results[]}`、
+  `results[]` は `{product_id, name, line_category, image_url, lab, representativeness}`。決定的。
+
+> ⚠️ **`openapi.json` は 6/15 版が陳腐化**(/v14 等が未反映)。型生成(`gen:api-types`)の前に再生成が必要
+> (CI `openapi-sync.yml` で生成可)。本ドキュメントが正、openapi は再生成待ち。
 
 ---
 
