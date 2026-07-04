@@ -1300,6 +1300,14 @@ mina/yuki 対照**の系列で完全に決着:
 - テスト: `test_concierge_speech.py`(モジュール直・12件、explore の新規のみ/重複しない/予算/μ>0/最確信選択、
   recommend hybrid/user/product/serendipity/fallback、decide、**TS≡API パリティ表**)+ `test_v14_flow.py` に
   エンドポイント疎通。既存スキーマ不変・`/v13`・`/v14` 既存無変更(後方互換)。`conciergeScript.ts` は非推奨注記の上で残置。
+- **Web版繋ぎ込み(2026-07-04・color-capture feat/v14-recommend)**: フロントの発話を `/v14/concierge_speech` 経由に
+  置換。session に `conciergeSpeech`(表示状態)追加、Concierge.tsx は「API 発話を表示するだけ」に。PairCompareStep が
+  explore(session 相乗りで spoken_axes を往復)、RecommendStep が recommend/decide を駆動。inline の conciergeScript
+  使用を撤去(誰も import しない=非推奨として孤立)。color-capture CI(tsc)green。
+  **通し(E2E)静的トレース済**(実起動は npm の Gatekeeper ハングで不可): 遷移 intro→scene→wrist→lip→pc→pair→recommend
+  と scenes/lip_lab/pc/userState の受け渡しは整合。要ブラウザ確認は別途(下記残課題)。
+  **未決(behavior判断)**: concierge 呼び出しがペア送信の submitting をまたぐ(発話取得までボタン無効の短い待ち)。
+  ブロック維持 or 非同期化(spoken_axes が速クリックで稀に重複)のどちらかは人間判断。
 
 ---
 
