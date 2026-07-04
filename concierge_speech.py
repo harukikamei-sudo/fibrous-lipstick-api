@@ -58,11 +58,30 @@ def _axis_realization(axis_label: str) -> ConciergeSpeech:
     return ConciergeSpeech(type="axis_realization", text=f"なるほど、{axis_label}が好きみたいだね")
 
 
+# reasons.top_axes[].evidence は「その軸を最も動かした pair_id」の列(bayesian.compute_pref_evidence)。
+# 生の pair_id(例 wv_09_sweet_vs_classy)を文面にそのまま出さないよう、一言ラベルに変換する。
+# ※ pair_compare._PAIR_SPECS のラベルと同一(型生成に乗らないためここに転記・変更時は両方直す)。
+_PAIR_LABELS = {
+    "color_01_bright_vs_deep": "明るい vs 深い",
+    "color_02_warm_vs_cool": "暖色寄り vs 寒色寄り",
+    "color_03_vivid_vs_nude": "鮮やか vs ヌード",
+    "color_04_pink_vs_coral": "ピンク vs コーラル",
+    "color_05_rose_vs_red": "ローズ vs レッド",
+    "wv_06_girly_vs_mature": "ガーリー vs マチュア",
+    "wv_07_korean_vs_konare": "韓国っぽい vs こなれ",
+    "wv_08_juicy_vs_matte": "ジューシー vs マット",
+    "wv_09_sweet_vs_classy": "甘い vs クラシー",
+    "wv_10_daily_vs_statement": "デイリー vs ステートメント",
+}
+
+
 def _user_origin_text(axis) -> str:
-    # TODO(Kawano): 文面差し替え。evidence は「{n}問目で〜を選んだ」等の来歴文字列。
+    # TODO(Kawano): 文面差し替え。
     ev = axis.evidence[0] if getattr(axis, "evidence", None) else None
-    if ev:
-        return f"さっき{ev}。だからこれ"
+    pair_label = _PAIR_LABELS.get(ev) if ev else None
+    if pair_label:
+        return f"さっき「{pair_label}」で選んだのが効いてる。だからこれ"
+    # evidence が pair_id でない/無い場合は生値を出さず、軸ラベルで説明(生 ID 漏洩を防ぐ)。
     return f"あなたは{axis.label}が好きだよね。だからこれ"
 
 

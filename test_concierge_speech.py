@@ -118,12 +118,21 @@ def test_recommend_hybrid():
 
 
 def test_recommend_user_with_evidence():
-    print("Test: recommend=top_axes(evidence あり)→ reason_user(来歴主語)")
+    print("Test: recommend=top_axes(evidence=pair_id)→ 一言ラベルに変換(生ID を出さない)")
     reasons = _reasons(top_axes=[ReasonAxis(
-        axis="sheer", label="透け感", contribution=0.5, evidence=["3問目で透け感のある方を選んだ"])])
+        axis="sheer", label="透け感", contribution=0.5, evidence=["wv_09_sweet_vs_classy"])])
     r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=reasons))
     assert r.speech.type == "reason_user"
-    assert r.speech.text == "さっき3問目で透け感のある方を選んだ。だからこれ", r.speech.text
+    assert r.speech.text == "さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ", r.speech.text
+    print(f"  ✓ {r.speech.text}")
+
+
+def test_recommend_user_unknown_evidence_fallback():
+    print("Test: recommend=evidence が未知/非pair_id → 生値を出さず軸ラベルにフォールバック")
+    reasons = _reasons(top_axes=[ReasonAxis(
+        axis="sheer", label="透け感", contribution=0.5, evidence=["3問目で選んだ"])])
+    r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=reasons))
+    assert r.speech.text == "あなたは透け感が好きだよね。だからこれ", r.speech.text  # 生値 "3問目で選んだ" は出さない
     print(f"  ✓ {r.speech.text}")
 
 
@@ -172,6 +181,7 @@ TS_PARITY = [
     ("step_intro/pair_compare", "2つの色、どっちが好き?選ぶだけで好みを学んでいくよ"),
     ("step_intro/capture_wrist", "内側の血管の色から、似合う色のヒントがわかるんだよ"),
     ("axis_realization/透け感", "なるほど、透け感が好きみたいだね"),
+    ("reason_user/pairlabel", "さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ"),
     ("reason_hybrid", "あなたは透け感が好きだよね。だからこれ。しかもツヤが出るタイプだよ"),
     ("serendipity", "これはちょっと冒険枠。いつもと違う自分、試してみる?"),
     ("decision_confirm", "いいね、その2〜3本ならどれも似合うよ。じっくり見比べてね"),
@@ -187,6 +197,8 @@ def test_ts_parity_table():
         "step_intro/pair_compare": cs._step_intro("pair_compare").text,
         "step_intro/capture_wrist": cs._step_intro("capture_wrist").text,
         "axis_realization/透け感": cs._axis_realization("透け感").text,
+        "reason_user/pairlabel": cs._reason_speech(_reasons(top_axes=[ReasonAxis(
+            axis="sweetness", label="甘さ", contribution=0.5, evidence=["wv_09_sweet_vs_classy"])])).text,
         "reason_hybrid": cs._reason_speech(_reasons(
             top_axes=[ReasonAxis(axis="sheer", label="透け感", contribution=0.5, evidence=[])],
             traits=[ProductTrait(axis="glossy", label="ツヤ")])).text,
@@ -211,10 +223,11 @@ if __name__ == "__main__":
     test_explore_pick_most_confident()
     test_recommend_hybrid()
     test_recommend_user_with_evidence()
+    test_recommend_user_unknown_evidence_fallback()
     test_recommend_product_only()
     test_recommend_serendipity()
     test_recommend_empty_fallback()
     test_decide()
     test_ts_parity_table()
     print("=" * 50)
-    print("✅ concierge_speech: 全 12 テスト合格(TS パリティ含む)")
+    print("✅ concierge_speech: 全 13 テスト合格(TS パリティ含む)")
