@@ -1307,7 +1307,13 @@ mina/yuki 対照**の系列で完全に決着:
   **通し(E2E)静的トレース済**(実起動は npm の Gatekeeper ハングで不可): 遷移 intro→scene→wrist→lip→pc→pair→recommend
   と scenes/lip_lab/pc/userState の受け渡しは整合。要ブラウザ確認は別途(下記残課題)。
   **未決(behavior判断)**: concierge 呼び出しがペア送信の submitting をまたぐ(発話取得までボタン無効の短い待ち)。
-  ブロック維持 or 非同期化(spoken_axes が速クリックで稀に重複)のどちらかは人間判断。
+  ブロック維持 or 非同期化(spoken_axes が速クリックで稀に重複)のどちらかは人間判断 → **A(ブロック維持)で確定**(2026-07-04)。
+- **プレビューデプロイ(2026-07-04・通しブラウザ確認用)**: feat/v14 を**別 HF Space** `Tamable/fibrous-lipstick-api-v14`
+  (`https://tamable-fibrous-lipstick-api-v14.hf.space`)にデプロイ。本番 Space(main)・main ブランチは無変更。
+  **HF の binary policy(>1MB PNG 拒否)を履歴ごと回避するため orphan 単一コミット**(feat/v14 のツリー − 全図PNG・履歴なし)
+  を `git push hf-v14 <orphan>:main --force`。※ `git rm` の新コミットでは過去 blob が履歴に残り pre-receive で弾かれる
+  → orphan で履歴を捨てるのが要点。curl 検証: /docs・/v14/pair_compare/start・/v14/concierge_speech・/v13/popular すべて 200。
+  フロントは Vercel プレビュー(feat/v14-recommend)+ env `NEXT_PUBLIC_LIP_API_URL` を上記 Space に向ける(人間実施)。
 
 ---
 
