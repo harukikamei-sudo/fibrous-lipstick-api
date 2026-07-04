@@ -1314,6 +1314,18 @@ mina/yuki 対照**の系列で完全に決着:
   を `git push hf-v14 <orphan>:main --force`。※ `git rm` の新コミットでは過去 blob が履歴に残り pre-receive で弾かれる
   → orphan で履歴を捨てるのが要点。curl 検証: /docs・/v14/pair_compare/start・/v14/concierge_speech・/v13/popular すべて 200。
   フロントは Vercel プレビュー(feat/v14-recommend)+ env `NEXT_PUBLIC_LIP_API_URL` を上記 Space に向ける(人間実施)。
+- **recommend「計算中」固定バグ修正(2026-07-04・color-capture)**: RecommendStep の取得 effect が
+  `finally { if(!cancelled) setLoading(false) }` で、`setRecommendations` が dep(`recommendations.length`)を
+  変える→effect cleanup で `cancelled=true` → **loading が閉じず「推薦を計算中…」で固定**(推薦は取得済みでも表示されない)。
+  F3 の concierge `await` 追記がその窓を広げていた。修正: (1) finally を**無条件** `setLoading(false)`、
+  (2) recommend 導入発話 concierge を **await せず fire-and-forget**。数理コア/API 無変更。
+- **ペア比較プレビューを「顔全体 + 唇だけ着色」に(2026-07-04・color-capture)**: 唇クロップ断片では Mina が
+  似合いをイメージしにくい → 顔写真全体を左右に並べ唇の色だけ2案。**lipDetection.ts 無変更**(既に顔座標系の
+  mask/outer・innerPolygon を返しており、呼び出し側が捨てていただけ)。`SampleResult.face`(顔画像~720px +
+  唇ポリゴン)を追加、`renderFaceLipPreview` がポリゴンからマスク再構築 → **recolorLips 純関数を流用**。
+  実マスクなので口周りの肌が染まらない。face 無ければクロップにフォールバック(後方互換)。
+  **★段階方針(認識合わせ)**: 今回はペア比較だけ顔全体化・**推薦側(TOP-5/shortlist)は現状維持(唇クロップ)で暫定**。
+  **最終ゴールは「顔全体が良ければ推薦側も顔全体に統一」**(混在は先行段階の暫定・実機の見た目確認後に統一する前提)。
 
 ---
 
