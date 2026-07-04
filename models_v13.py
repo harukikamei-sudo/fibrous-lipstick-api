@@ -463,6 +463,11 @@ class PopularItem(BaseModel):
     representativeness: float = Field(
         ..., ge=0.0, le=1.0, description="定番度(カタログ中心 Lab への近さ。1=最も汎用的)"
     )
+    effective_lab: Optional[LabValue] = Field(
+        None,
+        description="lip_lab(+mu_thickness)を渡した場合の K-M 塗布後 Lab。フロントが本人の唇に"
+                    "重ねる用。未指定なら None(ランキングはユーザー非依存のまま)。",
+    )
 
 
 class PopularResponse(BaseModel):

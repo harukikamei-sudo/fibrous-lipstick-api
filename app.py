@@ -850,7 +850,13 @@ def v14_pair_compare_next(req: V14NextRequest):
 
 
 @app.get("/v13/popular", response_model=PopularResponse)
-def v13_popular(top_n: int = 5):
+def v13_popular(
+    top_n: int = 5,
+    lip_l: Optional[float] = None,
+    lip_a: Optional[float] = None,
+    lip_b: Optional[float] = None,
+    mu_thickness: float = 0.5,
+):
     """ユーザー非依存の「みんなの定番」ランキング(F4-fix #5 / フロントは参照枠として併設)。
 
     狙い: 診断ごとに動くパーソナライズ結果の隣に「不動の共通基準」を置き、自分の結果が
@@ -875,6 +881,21 @@ def v13_popular(top_n: int = 5):
 
     scored = sorted(((_dist(p["lab"]), p["id"], p) for p in CATALOG), key=lambda t: (t[0], t[1]))
     d_max = max((d for d, _, _ in scored), default=1.0) or 1.0
+
+    # lip_lab を渡された場合のみ、TOP-N 各商品の K-M 塗布後 Lab(effective_lab)を計算。
+    # 本人の唇に重ねるプレビュー用。ランキング自体はユーザー非依存のまま(effective は付加情報)。
+    want_eff = lip_l is not None and lip_a is not None and lip_b is not None
+    lip = [lip_l, lip_a, lip_b] if want_eff else None
+    mu_t = max(0.0, min(1.0, mu_thickness))
+
+    def _eff(p) -> Optional[LabValueV13]:
+        if not want_eff:
+            return None
+        ks = km.ks_from_lab(p["lab"])
+        s, _ = km.resolve_line_s(line_id=p["line_id"], line_category=p["line_category"])
+        a = km.compute_applied_lab(lip, ks, s, mu_t)  # mu_thickness で直接塗布後 Lab
+        return LabValueV13(L=float(a[0]), a=float(a[1]), b=float(a[2]))
+
     results = [
         PopularItem(
             product_id=p["id"],
@@ -883,6 +904,7 @@ def v13_popular(top_n: int = 5):
             image_url=p["image_url"],
             lab=LabValueV13(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
             representativeness=round(1.0 - d / d_max, 4),
+            effective_lab=_eff(p),
         )
         for d, _, p in scored[:top_n]
     ]

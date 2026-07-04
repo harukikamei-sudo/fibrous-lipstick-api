@@ -337,7 +337,23 @@ def test_popular_static_ranking() -> None:
     ids1 = [it["product_id"] for it in d["results"]]
     ids2 = [it["product_id"] for it in client.get("/v13/popular?top_n=5").json()["results"]]
     assert ids1 == ids2, (ids1, ids2)
+    # lip なし → effective_lab は None(ユーザー非依存)
+    assert all(it.get("effective_lab") is None for it in d["results"]), "lip なしで effective_lab が出た"
     print(f"  ✓ 定番 TOP-1: {ids1[0]} (rep={reps[0]:.3f}), 決定的")
+
+
+def test_popular_with_lip_returns_effective_lab() -> None:
+    hr("/v13/popular?lip_* → 各定番に effective_lab(本人の唇に重ねる用)。ランキングは不変")
+    base = client.get("/v13/popular?top_n=5").json()["results"]
+    r = client.get("/v13/popular?top_n=5&lip_l=62&lip_a=22&lip_b=12&mu_thickness=0.5")
+    assert r.status_code == 200, r.text
+    d = r.json()["results"]
+    # ランキング(順序)は lip 有無で不変(ユーザー非依存)
+    assert [x["product_id"] for x in d] == [x["product_id"] for x in base], "lip でランキングが変わった"
+    for it in d:
+        eff = it.get("effective_lab")
+        assert eff and all(k in eff for k in ("L", "a", "b")), it
+    print(f"  ✓ effective_lab 付与 (例 {d[0]['product_id']}: L*{d[0]['effective_lab']['L']:.0f})、順序不変")
 
 
 if __name__ == "__main__":
@@ -365,5 +381,6 @@ if __name__ == "__main__":
     test_recommend_rerank_top1_de_monotonic()
     # /v13/popular
     test_popular_static_ranking()
+    test_popular_with_lip_returns_effective_lab()
     print("\n" + "=" * 50)
-    print("✅ /v13/* endpoints: 全 17 テスト合格")
+    print("✅ /v13/* endpoints: 全 18 テスト合格")
