@@ -1339,6 +1339,14 @@ mina/yuki 対照**の系列で完全に決着:
   色ムラ)は維持。`LIP_TEXTURE_STRENGTH/OPACITY/FEATHER_RADIUS` を定数化(後調整可)。純関数・数理コア/API/lipDetection 無変更。
 - **パーソナルカラー表示(2026-07-04)**: RecommendStep ヘッダに `userState.pc_season`、各カードに `catalog_pc_tags` +
   ユーザー PC と一致すれば「✓一致」。推薦色と PC の整合を目視確認できるように。
+- **「みんなの定番」も本人の顔に重ねる(2026-07-04)**: 推薦 TOP-5 は顔全体プレビューに統一済だが定番だけ
+  マスストーンの色見本のままで見え方が別基準 → 統一。定番は元々マスストーン `lab` しか持たない(effective_lab
+  非計算)ため、`GET /v13/popular` に任意の `lip_l/lip_a/lip_b(+mu_thickness)` を追加。渡された時のみ TOP-N 各定番に
+  `km.compute_applied_lab(lip, ks, s, mu_t)` で **effective_lab を付与**(渡さなければ null=従来どおり)。
+  **ランキング自体はユーザー非依存で不変**(effective_lab は付加情報のみ、順序に不使用)を test で担保(18件)。
+  フロント: RecommendStep が `userState.lip_lab`(+θ_thickness.μ)を渡し、返る effective_lab で `renderFaceLipPreview`
+  → PopularSection が定番も顔全体に重ねて表示。face/effective_lab が無い時はマスストーン Lab の色見本にフォールバック。
+  CI(API test.yml + color-capture tsc)green、v14 プレビュー Space 再デプロイ(orphan push)→ curl で effective_lab 付与&順序不変を確認。
 
 ---
 
