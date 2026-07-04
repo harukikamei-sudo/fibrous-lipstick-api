@@ -1330,6 +1330,15 @@ mina/yuki 対照**の系列で完全に決着:
     同じ detectLips → sampleFromMask + buildFaceCapture 経路(カメラ不要でも顔全体プレビューが使える)。lipDetection 無変更。
   - **推薦側統一**: RecommendStep の TOP-5/詳細/比較/決定カードも `renderFaceLipPreview`(face あれば顔全体・無ければ
     クロップ fallback)。→ **ペア比較・推薦とも顔全体 + 唇着色で統一(混在解消・最終ゴール達成)**。recolorLips 流用。
+- **コンシェルジュ発話の生 pair_id 漏れ修正(2026-07-04)**: reason 発話が `evidence`(= bayesian の
+  pair_id 列)を生で埋め、「さっき**wv_09_sweet_vs_classy**。だからこれ」と表示。`_PAIR_LABELS`(pair_id→一言ラベル、
+  pair_compare._PAIR_SPECS と同一)で「さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ」に変換。未知値は
+  生を出さず軸ラベルにフォールバック。API concierge_speech.py + TS conciergeScript.ts 両方(TS≡API 維持)+ test 13件。
+- **唇プレビューの自然化(recolorLips 調整・2026-07-04)**: 「塗り絵」感を低減。(1) **マスク縁フェザリング**(box blur で
+  羽化α・縁薄く中央濃く)、(2) **不透明度 LIP_OPACITY=0.85**(下地を透かし馴染ませる)、(3) **L 偏差保持**(ツヤ/陰影/
+  色ムラ)は維持。`LIP_TEXTURE_STRENGTH/OPACITY/FEATHER_RADIUS` を定数化(後調整可)。純関数・数理コア/API/lipDetection 無変更。
+- **パーソナルカラー表示(2026-07-04)**: RecommendStep ヘッダに `userState.pc_season`、各カードに `catalog_pc_tags` +
+  ユーザー PC と一致すれば「✓一致」。推薦色と PC の整合を目視確認できるように。
 
 ---
 
