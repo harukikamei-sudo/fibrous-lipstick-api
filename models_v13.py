@@ -404,6 +404,11 @@ class V14Session(BaseModel):
     """ステートレス往復セッション(UserState 相当 + 進行)。サーバ側には保存しない。"""
     user: UserState
     asked_pair_ids: List[str] = Field(default_factory=list)
+    # コンシェルジュ発話 API(/v14/concierge_speech)の中間実況の重複/予算状態を相乗り。
+    # spoken_axes に載る=実況済み軸名。予算は len(spoken_axes) < PAIR_REALIZATION_BUDGET(3)で判定。
+    # 表示状態を推薦セッションに相乗りさせる=関心の軽い混在だが、RN(Kawano)側のフロント
+    # 新規実装をゼロにする判断(spoken_axes が要るのは explore のみ=session を往復中のため)。
+    spoken_axes: List[str] = Field(default_factory=list)
 
 
 class ThetaSnapshot(BaseModel):
@@ -464,3 +469,38 @@ class PopularResponse(BaseModel):
     catalog_size: int
     method: str = Field(..., description="代表性の算出方法(MVP=median Lab centroid 距離)")
     results: List[PopularItem]
+
+
+# ============ /v14/concierge_speech: コンシェルジュ発話生成(F3 を API 化)============
+# フロント conciergeScript.ts のロジックを Python に一本化(RN/Next の二重実装回避)。
+# 既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。
+
+ConciergePhase = Literal["explore", "recommend", "decide"]
+ConciergeSpeechType = Literal[
+    "step_intro", "axis_realization", "reason_user", "reason_product",
+    "reason_hybrid", "serendipity_offer", "decision_confirm", "decision_final",
+]
+
+
+class ConciergeSpeech(BaseModel):
+    type: ConciergeSpeechType
+    text: str
+
+
+class ConciergeSpeechRequest(BaseModel):
+    phase: ConciergePhase
+    # explore: session を往復(spoken_axes = 実況済み軸の状態を相乗り)。step は step_intro 用。
+    session: Optional[V14Session] = None
+    step: Optional[str] = Field(None, description="step_intro 用のステップ名(例 capture_wrist)")
+    # recommend: reasons を口語化。is_serendipity で冒険枠。scenes は組合せ起点パターン用。
+    reasons: Optional[RecommendReasons] = None
+    is_serendipity: bool = False
+    scenes: Optional[List[str]] = None
+    # decide: 終端台詞か確認台詞か。
+    is_final: bool = False
+
+
+class ConciergeSpeechResponse(BaseModel):
+    speech: Optional[ConciergeSpeech] = None
+    # explore で実況したら spoken_axes を追記した session を返す(caller が次ターンへ持ち回る)。
+    session: Optional[V14Session] = None

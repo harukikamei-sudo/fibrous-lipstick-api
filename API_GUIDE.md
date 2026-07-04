@@ -717,6 +717,31 @@ curl -s 'https://tamable-fibrous-lipstick-api.hf.space/v13/popular?top_n=5'
 `/v13/update_user` の観測に `extras:{action,kept,decided}` 等を付与可。**ベイズ更新には未使用**=Phase 2 のデータ収集用。
 `source_pair_id` も観測の来歴(reasons の evidence)用に追加済み。
 
+### POST `/v14/concierge_speech` — コンシェルジュ(妖精)の発話生成
+
+発話生成をバックエンドに一本化(RN/Next の二重実装回避・6/29 方針)。既存の reasons(A2)/
+theta_snapshot(A3・session 内)を**日本語文面に変換するだけ**。フロントは返った文面を吹き出しに出すだけ。
+
+```bash
+# explore(ペア比較中の中間実況): session をそのまま渡す(spoken_axes=実況済み軸の状態が相乗り)
+curl -sX POST .../v14/concierge_speech \
+  -d '{"phase":"explore","session":<pair_compare/next が返した session>,"step":"pair_compare"}'
+# → {speech:{type:"axis_realization"|"step_intro", text}, session:<spoken_axes 追記版・次ターンへ持ち回る>}
+
+# recommend(推薦理由の口語化)
+curl -sX POST .../v14/concierge_speech \
+  -d '{"phase":"recommend","reasons":<recommend の results[].reasons>,"is_serendipity":false}'
+# → {speech:{type:"reason_hybrid"|"reason_user"|"reason_product"|"serendipity_offer"|"step_intro", text}}
+
+# decide(確認/終端)
+curl -sX POST .../v14/concierge_speech -d '{"phase":"decide","is_final":true}'
+# → {speech:{type:"decision_final", text}}
+```
+
+- **状態管理**: 中間実況の重複防止・予算(最大3回)は `session.spoken_axes` に相乗り(caller は session を往復するだけ・中身を知らなくてよい)。spoken_axes が要るのは explore のみ。
+- **軸実況は μ_pref>0(好意方向)のみ**・確信(var ≤ RHO·TAU2)した軸を1つ。否定方向は黙る(Phase 2)。
+- 文面テンプレは Kawano 3パターン待ち=現状は仮テキスト(妖精トーン)。ロジックは `conciergeScript.ts` の忠実移植(TS パリティテスト有)。
+
 > v14 の全フィールド定義は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) §4.6/§4.7、最新 OpenAPI は `openapi.json`(CI 再生成済み)。
 
 ---

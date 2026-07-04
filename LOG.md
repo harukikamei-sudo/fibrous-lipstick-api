@@ -1281,6 +1281,28 @@ mina/yuki 対照**の系列で完全に決着:
 
 ---
 
+## エポック 17: コンシェルジュ発話の API 一本化(2026-06-29)
+
+**方針転換(6/29 MTG)**: フロントを iPhone 向け React Native に移行しリポジトリも Next.js 版と分離。
+発話生成ロジックをフロント(`conciergeScript.ts`)に置くと RN 版と二重実装になるため、**発話生成を
+バックエンド(Python)に一本化**して API で返す。フロントは「API が返した文面を吹き出しに出すだけ」。
+
+- `concierge_speech.py`: `conciergeScript.ts` の**忠実移植**(挙動不変)。既存 reasons(A2)/ theta_snapshot(A3)を
+  日本語文面に変換するだけ=新しい推薦データやスコアは作らない。文面テンプレは Kawano 3パターン待ちのため
+  仮テキスト + TODO(Kawano) を移植。`/v14/concierge_speech`(explore/recommend/decide の3フェーズ)。
+- **軸実況は μ_pref>0(好意方向)のみ**(#3 承認)。否定方向の実況は Mina に優しくない + 文面待ち増を避けるため
+  Phase 2。
+- **★ spoken_axes を `V14Session` に相乗りさせた理由(混在の記録)**: 中間実況の重複防止・予算(最大3)の状態を
+  どこに置くか(a)独立引数 vs (b)session 相乗り、を比較。**spoken_axes が要るのは explore のみ、かつ explore は
+  session を既に往復している** → (b) なら**フロント新規実装ゼロ**(session という blob を往復するだけ・中身を知らない)。
+  RN=Kawano の実装負担最小を優先し (b) 採用。**「表示状態(発話予算)を推薦セッションに相乗り=関心の軽い混在」**
+  という設計上の妥協は認識の上での判断(分担思想=複雑さはこちら持ち・Kawano は自領域に集中、に合致)。
+- テスト: `test_concierge_speech.py`(モジュール直・12件、explore の新規のみ/重複しない/予算/μ>0/最確信選択、
+  recommend hybrid/user/product/serendipity/fallback、decide、**TS≡API パリティ表**)+ `test_v14_flow.py` に
+  エンドポイント疎通。既存スキーマ不変・`/v13`・`/v14` 既存無変更(後方互換)。`conciergeScript.ts` は非推奨注記の上で残置。
+
+---
+
 ## 残課題(後続のため)
 
 0. **[Phase 2・実ユーザー検証] mina/aya collapse は合成 persona 固有か**: A4 harness のペルソナは私の

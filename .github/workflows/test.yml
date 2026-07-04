@@ -50,6 +50,9 @@ jobs:
       - name: Run test_recommend_v2.py
         run: python test_recommend_v2.py
 
+      - name: Run test_concierge_speech.py
+        run: python test_concierge_speech.py
+
       - name: Run test_v13_endpoints.py
         run: python test_v13_endpoints.py
 

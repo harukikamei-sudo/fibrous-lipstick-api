@@ -76,6 +76,26 @@ def test_determinism_first_pair() -> None:
     print(f"  ✓ first_pair 一致: {p1}")
 
 
+def test_concierge_speech_endpoint() -> None:
+    print("Test 5: /v14/concierge_speech(explore/recommend/decide)疎通")
+    # explore: start の session をそのまま渡す(spoken_axes 相乗り)
+    d = client.post("/v14/pair_compare/start", json={
+        "lip_lab": {"L": 62, "a": 22, "b": 12}, "scenes": ["school", "friends"]}).json()
+    r = client.post("/v14/concierge_speech", json={
+        "phase": "explore", "session": d["session"], "step": "pair_compare"})
+    assert r.status_code == 200, r.text
+    dd = r.json()
+    assert dd["session"] is not None, "explore は session を返す"
+    if dd["speech"]:
+        assert dd["speech"]["type"] in ("axis_realization", "step_intro"), dd["speech"]
+    # decide
+    rf = client.post("/v14/concierge_speech", json={"phase": "decide", "is_final": True}).json()
+    assert rf["speech"]["type"] == "decision_final", rf
+    rc = client.post("/v14/concierge_speech", json={"phase": "decide", "is_final": False}).json()
+    assert rc["speech"]["type"] == "decision_confirm", rc
+    print("  ✓ concierge_speech explore(session往復)/ decide 疎通")
+
+
 def test_v13_regression() -> None:
     print("Test 4: v13 エンドポイント回帰なし")
     r = client.get("/v13/pair_compare/init")
@@ -93,6 +113,7 @@ if __name__ == "__main__":
     test_v14_flow()
     test_effective_lab_depends_on_lip()
     test_determinism_first_pair()
+    test_concierge_speech_endpoint()
     test_v13_regression()
     print("=" * 50)
-    print("✅ v14_flow: 全 4 テスト合格")
+    print("✅ v14_flow: 全 5 テスト合格")

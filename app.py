@@ -53,8 +53,11 @@ def _es():
 import bayesian
 import pair_compare as pc_mod
 import recommend_v2 as rec_v2
+import concierge_speech
 from catalog_x20 import load_x20_from_row
 from models_v13 import (
+    ConciergeSpeechRequest,
+    ConciergeSpeechResponse,
     KMTableRow,
     LabValue as LabValueV13,
     PairApplyRequest,
@@ -888,6 +891,17 @@ def v13_popular(top_n: int = 5):
         method="centroid_distance(median Lab); MVP 代用(本番は売上/レビューに差し替え)",
         results=results,
     )
+
+
+@app.post("/v14/concierge_speech", response_model=ConciergeSpeechResponse)
+def v14_concierge_speech(req: ConciergeSpeechRequest):
+    """コンシェルジュ(妖精)の発話を生成(F3 を API 化・RN/Next の二重実装回避)。
+
+    既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。
+    発話ロジックは `concierge_speech.py`(conciergeScript.ts の忠実移植)。
+    explore は session を往復(中間実況の重複/予算は session.spoken_axes に相乗り)。
+    """
+    return concierge_speech.generate(req)
 
 
 def _interpret_match_rate(r: float) -> str:
