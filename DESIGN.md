@@ -524,5 +524,5 @@ pc_score: 4軸(L,a,b,C*) ユークリッド距離(=対矩形領域)、別物と�
 | EIG ペア選択 | `pair_eig.eig_pair / best_pair / apply_v14_choice / theta_snapshot` |
 | reasons | `recommend_v2._build_reasons / _attach_reasons / _percentile_high_good` |
 | candidate_count | `recommend_v2._competitive_count` |
-| 全体ランキング | `app.v13_popular`(median Lab centroid 距離) |
+| 全体ランキング | `app.v13_popular`(median Lab centroid 距離。任意 lip_lab で各定番に effective_lab を付与=顔プレビュー用、順序は不変) |
 | 検証ハーネス | `scripts/figures/make_a4_validation.py`(CI の a4 ジョブ) |

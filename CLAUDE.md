@@ -343,13 +343,17 @@ products_with_lab.csv からロード。
 | **v1.3-J** | **個人化層ハードニング**(dislike修正 / θ_explore配線 / EIG rerank / σ²較正) | ✅ LOG エポック13。後方互換維持・回帰テスト追加 |
 | **v1.3-K** | **ピッチ用 in-silico 図**(docs/figures 4枚 + 生成スクリプト) | ✅ LOG エポック14。本番コード経由・再現可能。⚠️「能動学習が最速」は本番では不成立と判明→図を再構成 |
 | **v14-A1〜A5** | **シーン事前 / reasons / 絞り込みカウンタ / 逐次EIGペア比較(/v14)/ OpenAPI型生成** | ✅ LOG エポック15-16。全 CI green。`feat/v14` |
-| **v14-popular** | **`GET /v13/popular`(ユーザー非依存の代表性ランキング)** | ✅ カタログ中央 Lab 近さで代用。test_v13_endpoints 17件 |
-| **v14-F1〜F4** | **フロント: SceneStep / recolorLips / v14ペアUI+唇プレビュー / Concierge / 購入フロー shortlist** | ✅ `feat/v14-recommend`(YK-0204/color-capture)。CI tsc green。文面は Kawano 待ち |
+| **v14-popular** | **`GET /v13/popular`(ユーザー非依存の代表性ランキング)** | ✅ カタログ中央 Lab 近さで代用。任意 lip_lab で `effective_lab` 付与(顔プレビュー用・順序不変)。test 18件 |
+| **v14-F1〜F4** | **フロント: SceneStep / recolorLips / v14ペアUI+唇プレビュー / Concierge / 購入フロー shortlist** | ✅ `feat/v14-recommend`(YK-0204/color-capture)。CI tsc green |
 | **v14-C/D** | **A4 検証 → 確定**(N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / 20軸) | ✅ LOG エポック16。scene+7 で flat+10 同等(問数3問減) |
 | **v14-collapse** | **似たペルソナの推薦同一化の調査** | ✅ 決着=合成ペルソナ固有(戦略A・色ペア据置)。Phase2 で実ユーザー再検証。`KAWANO_V14_REVIEW.md` |
+| **v14-F3-API** | **コンシェルジュ発話を API 化**(`POST /v14/concierge_speech`・TS→Python 移植) | ✅ 3フェーズ / spoken_axes 相乗り / TS≡API パリティ13件。生 pair_id 漏れも修正(LOG エポック17) |
+| **v14-顔プレビュー** | **クロップ→顔全体 + 唇だけ再着色に統一**(ペア/推薦/定番)+ 写真アップロード + recolorLips 自然化 + PC 表示 | ✅ `renderFaceLipPreview`(lipDetection 無変更)。LOG エポック17 |
+| **v14-プレビュー環境** | **feat/v14 を別 HF Space にデプロイ**(本番非汚染) | ✅ `Tamable/fibrous-lipstick-api-v14`。orphan push 手順。API 変更ごとに再デプロイ |
 
-> **v14 の現況・運用は [HANDOFF.md](HANDOFF.md) 冒頭(2026-06-29)を参照**。
+> **v14 の現況・運用は [HANDOFF.md](HANDOFF.md) 冒頭(2026-07-06)を参照**。
 > ⚠️ ローカルは skimage/tsc/npm が Gatekeeper でハング → 検証は CI(`test.yml` の workflow_dispatch `a4` ジョブ等)。
+> ⚠️ `color-capture/.env.production`(v14 プレビュー Space 向き)は **main マージ前に必ず削除**。
 
 ## v1.3 Kawanoさん interface(2026-05-29 実装)
 

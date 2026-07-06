@@ -456,6 +456,64 @@
               "default": 5,
               "title": "Top N"
             }
+          },
+          {
+            "name": "lip_l",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip L"
+            }
+          },
+          {
+            "name": "lip_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip A"
+            }
+          },
+          {
+            "name": "lip_b",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip B"
+            }
+          },
+          {
+            "name": "mu_thickness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 0.5,
+              "title": "Mu Thickness"
+            }
           }
         ],
         "responses": {
@@ -465,6 +523,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PopularResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v14/concierge_speech": {
+      "post": {
+        "summary": "V14 Concierge Speech",
+        "description": "コンシェルジュ(妖精)の発話を生成(F3 を API 化・RN/Next の二重実装回避)。\n\n既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。\n発話ロジックは `concierge_speech.py`(conciergeScript.ts の忠実移植)。\nexplore は session を往復(中間実況の重複/予算は session.spoken_axes に相乗り)。",
+        "operationId": "v14_concierge_speech_v14_concierge_speech_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConciergeSpeechRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConciergeSpeechResponse"
                 }
               }
             }
@@ -651,6 +748,134 @@
           "table"
         ],
         "title": "ComputeKmTableResponse"
+      },
+      "ConciergeSpeech": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "step_intro",
+              "axis_realization",
+              "reason_user",
+              "reason_product",
+              "reason_hybrid",
+              "serendipity_offer",
+              "decision_confirm",
+              "decision_final"
+            ],
+            "title": "Type"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "title": "ConciergeSpeech"
+      },
+      "ConciergeSpeechRequest": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "explore",
+              "recommend",
+              "decide"
+            ],
+            "title": "Phase"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/V14Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "step_intro 用のステップ名(例 capture_wrist)"
+          },
+          "reasons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendReasons"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_serendipity": {
+            "type": "boolean",
+            "title": "Is Serendipity",
+            "default": false
+          },
+          "scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenes"
+          },
+          "is_final": {
+            "type": "boolean",
+            "title": "Is Final",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase"
+        ],
+        "title": "ConciergeSpeechRequest"
+      },
+      "ConciergeSpeechResponse": {
+        "properties": {
+          "speech": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConciergeSpeech"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/V14Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ConciergeSpeechResponse"
       },
       "EstimateSRequest": {
         "properties": {
@@ -1619,6 +1844,17 @@
             "minimum": 0.0,
             "title": "Representativeness",
             "description": "定番度(カタログ中心 Lab への近さ。1=最も汎用的)"
+          },
+          "effective_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lip_lab(+mu_thickness)を渡した場合の K-M 塗布後 Lab。フロントが本人の唇に重ねる用。未指定なら None(ランキングはユーザー非依存のまま)。"
           }
         },
         "type": "object",
@@ -2543,6 +2779,13 @@
             },
             "type": "array",
             "title": "Asked Pair Ids"
+          },
+          "spoken_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Spoken Axes"
           }
         },
         "type": "object",

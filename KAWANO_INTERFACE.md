@@ -4,7 +4,7 @@
 > Kawanoさん 側の事情(SDK・状態保持・通信モデル)に合わせて、ペイロード形式・
 > 通信方式・状態の置き場所はすべて差し替え可能。気になる点は遠慮なく言ってください。
 >
-> 最終更新: 2026-05-29 / 設計書 v1.3 準拠 / Opus 4.7 実装
+> 最終更新: 2026-07-06 / 設計書 v1.3 + v14(逐次ペア・reasons・concierge・popular effective_lab)準拠
 
 ---
 
@@ -48,13 +48,17 @@ lip API は **state を持ちません**。リクエスト毎に caller(Kawano�
 
 | Method | Path | 用途 |
 |---|---|---|
-| GET  | `/v13/pair_compare/init`  | 10 ペアを取得(初回診断) |
-| POST | `/v13/pair_compare/apply` | ペア選択 → 事前分布構築 |
-| POST | `/v13/update_user`        | 観測ログ → 更新後 UserState |
+| POST | `/v14/pair_compare/start` | **【現行フロント採用】** 逐次ペア比較の開始(最大EIGペア + effective_lab)。§4.6 |
+| POST | `/v14/pair_compare/next`  | **【現行フロント採用】** 選択→更新→次の最大EIGペア(固定 N=8 問)。§4.6 |
+| POST | `/v14/concierge_speech`   | コンシェルジュ発話生成(explore/recommend/decide)。§4.8 |
+| GET  | `/v13/popular`            | ユーザー非依存「みんなの定番」(代表性ランキング + 任意 effective_lab)。§4.7 |
 | POST | `/v13/recommend`          | UserState → TOP-N 推薦(`rerank:true` で EIG 能動学習) |
-| POST | `/v14/pair_compare/start` | 逐次ペア比較の開始(最大EIGペア + effective_lab)。§4.6 |
-| POST | `/v14/pair_compare/next`  | 選択→更新→次の最大EIGペア(固定 N=8 問)。§4.6 |
-| GET  | `/v13/popular`            | ユーザー非依存「みんなの定番」(代表性ランキング)。§4.7 |
+| POST | `/v13/update_user`        | 観測ログ → 更新後 UserState |
+| GET  | `/v13/pair_compare/init`  | 【旧・一括】10 ペアを取得(v14 逐次に置換済。API は後方互換で残置) |
+| POST | `/v13/pair_compare/apply` | 【旧・一括】ペア選択 → 事前分布構築(同上) |
+
+> **現行フロント(color-capture `feat/v14-recommend`)は v14 逐次ペア(`/v14/pair_compare/{start,next}`)を採用**。
+> v13 の一括 `init`/`apply` は API に残っているが未使用。詳細は §4.6。
 
 ベース URL(本番):
 ```
@@ -348,10 +352,31 @@ POST /v14/pair_compare/next
   (Phase 2 のデータ収集として保持するのみ)。`source_pair_id` も観測の来歴用に追加済み。
 - **`GET /v13/popular?top_n=N`**: ユーザー非依存の「みんなの定番」。MVP は売上/レビューが無いため
   **カタログ代表性**(中央 Lab=median centroid への近さ)で代用。レスポンス `{catalog_size, method, results[]}`、
-  `results[]` は `{product_id, name, line_category, image_url, lab, representativeness}`。決定的。
+  `results[]` は `{product_id, name, line_category, image_url, lab, representativeness, effective_lab}`。決定的。
+  - **任意 `lip_l/lip_a/lip_b`(3つ揃った時のみ)+ `mu_thickness`(既定 0.5)**: 渡すと各定番に
+    `effective_lab`(本人の唇に塗った K-M 塗布後 Lab)が付く。未指定なら `effective_lab:null`。
+    **ランキングはユーザー非依存で不変**(effective_lab は付加情報のみ)。定番も唇に合成して顔プレビューできる。
 
-> ⚠️ **`openapi.json` は 6/15 版が陳腐化**(/v14 等が未反映)。型生成(`gen:api-types`)の前に再生成が必要
-> (CI `openapi-sync.yml` で生成可)。本ドキュメントが正、openapi は再生成待ち。
+> ✅ **`openapi.json` は再生成済み**(/v14 全エンドポイント + `/v13/popular` の lip 引数 + `PopularItem.effective_lab`
+> 反映済み)。CI(`test.yml` の a4 ジョブ)が `app.openapi()` を dump してアーティファクトに出力 →
+> リポジトリの `openapi.json` に反映済み。型生成(`gen:api-types`)はこの最新版から可能。
+
+### 4.8 `POST /v14/concierge_speech` — コンシェルジュ(妖精)の発話生成
+
+発話生成を**バックエンドに一本化**(RN=Kawano さん / Next の二重実装回避)。既存の reasons(§4.7)/
+theta_snapshot(§4.6・session 内)を**日本語文面に変換するだけ**の薄い層。フロントは返った `speech.text` を吹き出しに出すだけ。
+
+- **リクエスト** `{phase, session?, step?, reasons?, is_serendipity?, scenes?, is_final?}`:
+  - `phase="explore"`(ペア比較中の中間実況): `session` をそのまま渡す(`spoken_axes`=実況済み軸が相乗り)。`step` は step_intro 用。
+  - `phase="recommend"`(推薦理由の口語化): `reasons`(recommend の `results[].reasons`)+ `is_serendipity`。
+  - `phase="decide"`(確認/終端): `is_final`。
+- **レスポンス** `{speech:{type, text} | null, session?}`:
+  - `type` は `step_intro` / `axis_realization` / `reason_user` / `reason_product` / `reason_hybrid` / `serendipity_offer` / `decision_confirm` / `decision_final`。
+  - explore では **`spoken_axes` 追記版の `session`** が返る(次ターンへ持ち回る)。caller は中身を知らず往復するだけ。
+- **状態管理**: 中間実況の重複防止・予算(最大3回)は `session.spoken_axes` に相乗り(§4.6 の session をそのまま使う)。
+- 軸実況は **μ_pref>0(好意方向)** かつ確信した軸を1つだけ。否定方向は黙る(Phase 2)。
+- **来歴の一言化**: reason 発話は `evidence`(pair_id 列)を生で出さず、`_PAIR_LABELS`(pair_id → 「甘い vs クラシー」等)に変換。
+- 文面は Haruki 作成の暫定確定版(上品なコンシェルジュ風)。**3パターン最終文面は Kawano さんと協議予定**。
 
 ---
 

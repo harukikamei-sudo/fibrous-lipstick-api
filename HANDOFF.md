@@ -3,9 +3,42 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-06-29 — **v14 推薦体験改修(A1〜A5 / F1〜F4)+ collapse 調査の決着**
+最終更新: 2026-07-06 — **F3 コンシェルジュ API 化 + 顔全体プレビュー + プレビューデプロイ**
 
-## 2026-06-15〜29 セッション(v14 推薦体験改修)★最新
+## 2026-07-04〜06 セッション(F3 API 化 / 顔プレビュー / プレビュー環境)★最新
+
+**前提**: ブランチは前セッションと同じ(API=`feat/v14` / フロント=`feat/v14-recommend`=YK-0204/color-capture)。
+**API 変更のたびに v14 プレビュー Space を再デプロイ**(下記)。全 CI green。
+
+**実装済(全 CI green)**:
+- **F3 コンシェルジュ発話を API 化**: フロント `conciergeScript.ts`(TS)→ `POST /v14/concierge_speech`(`concierge_speech.py`)へ移植。
+  RN(Kawano)/Next の二重実装を回避。3フェーズ(explore/recommend/decide)。**中間実況の重複防止・予算(最大3)は
+  `session.spoken_axes` に相乗り**(caller は session を往復するだけ・option b 承認)。**TS≡API 全枠パリティテスト**(13件)。
+- **コンシェルジュ生 pair_id 漏れ修正**: 「さっき**wv_09_sweet_vs_classy**。だからこれ」→ `_PAIR_LABELS` で
+  「さっき「甘い vs クラシー」で選んだのが効いてる」に。未知値は軸ラベルにフォールバック。TS/API 両方。
+- **顔全体プレビューに統一**: 唇クロップ断片 → **顔写真全体 + 唇だけ再着色**(ペア比較・推薦・定番すべて)。
+  `SampleResult.face`(顔画像~720px + 唇ポリゴン)+ `renderFaceLipPreview`(ポリゴンからマスク再構築 → recolorLips 流用)。
+  lipDetection 無変更(既に顔座標系の mask/polygon を返していた)。face 無ければクロップに fallback(後方互換)。
+- **写真アップロード対応**: カメラ不使用でも写真選択 → 1280px ダウンスケール → 同じ detectLips 経路。
+- **唇プレビュー自然化(recolorLips)**: マスク縁フェザリング(box blur 羽化α)+ 不透明度 `LIP_OPACITY=0.85` +
+  L 偏差保持。定数化(`LIP_TEXTURE_STRENGTH/OPACITY/FEATHER_RADIUS`)。
+- **パーソナルカラー表示**: RecommendStep に `pc_season` + カード `catalog_pc_tags` +「✓一致」。
+- **みんなの定番も顔プレビュー**: `GET /v13/popular` に任意 `lip_l/lip_a/lip_b(+mu_thickness)` を追加 →
+  各定番に `effective_lab`(K-M 塗布後 Lab)を付与、定番も顔に重ねる。**ランキングは不変**。test 18件。
+- **recommend「計算中」固定バグ修正**: 取得 effect の `finally` を無条件 `setLoading(false)` に + 導入発話 concierge を fire-and-forget。
+
+**プレビュー環境(本番非汚染)**: feat/v14 を **別 HF Space** `Tamable/fibrous-lipstick-api-v14`
+(`https://tamable-fibrous-lipstick-api-v14.hf.space`)にデプロイ。本番 Space(main)・main ブランチ・本番 Vercel env は無変更。
+- **デプロイ手順(API 変更のたびに実施)**: HF は >1MB PNG を履歴ごと拒否 → **orphan 単一コミット(feat/v14 ツリー − 全図PNG・履歴なし)**を
+  `git push hf-v14 <orphan>:main --force`。`git rm` の新コミットは過去 blob が履歴に残り弾かれる → orphan で履歴を捨てるのが要点。
+- フロントは `color-capture/.env.production` の `NEXT_PUBLIC_LIP_API_URL` を上記 Space に向ける(**★ main マージ前に必ず削除**)。
+
+**人間/Kawano 待ち(このセッション時点)**: ① F3 コンシェルジュ **文面3パターン**(現行は Haruki 確定の暫定版)
+② Vercel プレビュー deploy(`npx vercel` or dashboard・env は .env.production で自動)③ 実 PAIR_BANK 再設計 ④ Phase2 実ユーザー再検証。
+
+---
+
+## 2026-06-15〜29 セッション(v14 推薦体験改修)
 
 **ブランチ**: API=`feat/v14`(origin harukikamei-sudo・main より 39 先行 / main は不変)、
 フロント=`feat/v14-recommend`(別 repo **YK-0204/color-capture**・`~/Desktop/color-capture/`)。

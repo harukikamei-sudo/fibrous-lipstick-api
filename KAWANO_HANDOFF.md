@@ -363,7 +363,8 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/pair_compare/appl
 - **[LOG.md](LOG.md)** — 開発ログ(意思決定の理由・エポック16 が v14)
 
 > **v14(推薦体験改修)が一段落**。協議は `KAWANO_V14_REVIEW.md` を司会に。下記 §3 の握手は
-> `/v14/pair_compare/{start,next}`(逐次)と `/v13/popular`(みんなの定番)が増えた(詳細 KAWANO_INTERFACE §4.6/4.7)。
+> `/v14/pair_compare/{start,next}`(逐次)と `/v13/popular`(みんなの定番。任意 lip_lab で各定番に
+> `effective_lab` が付き、定番も本人の唇に合成して顔プレビュー可)が増えた(詳細 KAWANO_INTERFACE §4.6/4.7)。
 
 ---
 

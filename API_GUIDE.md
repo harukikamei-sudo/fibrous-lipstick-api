@@ -707,10 +707,18 @@ curl -sX POST .../v14/pair_compare/next \
 ### GET `/v13/popular` — みんなの定番(ユーザー非依存)
 
 ```bash
+# 基本(ランキングのみ)
 curl -s 'https://tamable-fibrous-lipstick-api.hf.space/v13/popular?top_n=5'
-# → {catalog_size, method, results:[{product_id,name,line_category,image_url,lab,representativeness}]}
+# → {catalog_size, method, results:[{product_id,name,line_category,image_url,lab,representativeness,effective_lab:null}]}
+
+# 本人の唇に重ねるプレビュー用: lip_lab(+塗り厚 mu_thickness)を渡すと各定番に effective_lab が付く
+curl -s '.../v13/popular?top_n=5&lip_l=62&lip_a=22&lip_b=12&mu_thickness=0.5'
+# → results[*].effective_lab:{L,a,b}(K-M 塗布後 Lab)。★これを唇に合成すれば定番も顔プレビューできる
 ```
 - MVP は売上/レビューが無いため **カタログ代表性(中央 Lab=median centroid への近さ)で代用**(本番は売上に差替)。決定的。
+- **`lip_l/lip_a/lip_b`(任意・3つ揃った時のみ有効)+ `mu_thickness`(既定 0.5)**: 渡すと TOP-N 各定番に
+  `km.compute_applied_lab` の **`effective_lab`(本人の唇に塗った塗布後 Lab)** を付与。未指定なら `effective_lab:null`。
+  **ランキング(順序)はユーザー非依存で不変**(effective_lab は付加情報のみで並べ替えに不使用)。
 
 ### `Observation.extras`(F4-fix・任意)
 
