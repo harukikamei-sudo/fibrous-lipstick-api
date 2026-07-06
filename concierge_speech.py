@@ -1,12 +1,17 @@
 """コンシェルジュ発話生成(F3 を API 化)。
 
-フロント `color-capture/src/lib/conciergeScript.ts` のロジックを **忠実移植**したもの。
-RN 版と Next 版で二重実装しないため、発話生成をバックエンドに一本化する
-(6/29 MTG 方針転換)。既存の reasons(A2)/ theta_snapshot(A3・session 内)を
-**日本語文面に変換するだけ**で、新しい推薦データやスコアは作らない。
+フロント `color-capture/src/lib/conciergeScript.ts` のロジックと文面を **同一に保つ**
+(TS≡API パリティテストで担保)。RN 版と Next 版で二重実装しないため、発話生成を
+バックエンドに一本化する(6/29 MTG 方針転換)。既存の reasons(A2)/ theta_snapshot
+(A3・session 内)を **日本語文面に変換するだけ**で、新しい推薦データやスコアは作らない。
 
-【トーン】妖精キャラ(6/14 MTG)。文面は Kawano の3パターン待ち=ここは仮テキスト。
-  差し替え点は TODO(Kawano) コメントで明示。LLM は使わない(デモ安定性・出力統制)。
+【トーン】上品なホテルのコンシェルジュ風(中間トーン=基本やわらか・時々かしこまる)。
+  語尾はですます。絵文字あり(✨👍👀)。対象は Mina(15歳・メイク初心者・失敗不安)。
+  文面は Haruki 作成の確定版(旧「妖精・タメ口/ Kawano 3パターン待ち」から変更)。
+  LLM は使わない(デモ安定性・出力統制)。
+【名前】{name} プレースホルダは _fill_name で解決。名前があれば「名前+さん」、無ければ
+  「あなた」。現状 UserState に name フィールドは無い=実質「あなた」固定。将来 name 入力が
+  付いたら _extract_name が拾い、テンプレの {name} がそのまま効く(テンプレは残す)。
 【状態管理】中間実況の重複/予算は V14Session.spoken_axes に相乗り(caller が session を往復)。
   spoken_axes が要るのは explore のみ(=session を往復しているフェーズ)。
 【RHO 同期】CONCIERGE_RHO は recommend_v2.RHO_CONFIDENT(=0.5)と同値。skimage 依存を避け
@@ -29,33 +34,51 @@ from models_v13 import (
 CONCIERGE_RHO = 0.5            # = recommend_v2.RHO_CONFIDENT。変更時は API と conciergeScript.ts の両方直す
 PAIR_REALIZATION_BUDGET = 3    # ペア比較中の中間実況の発話予算(確定仕様)
 
-# ── 探索フェーズ: ステップ固定説明(TODO(Kawano): 妖精トーンの正式文面に差し替え。以下は仮)──
+
+def _fill_name(text: str, name: Optional[str] = None) -> str:
+    """{name} を解決。名前があれば「名前+さん」、無ければ「あなた」。
+    conciergeScript.ts の fillName と同一(変更時は両方直す)。"""
+    return text.replace("{name}", f"{name}さん" if name else "あなた")
+
+
+def _extract_name(req: ConciergeSpeechRequest) -> Optional[str]:
+    """名前の取得元。現状 UserState に name フィールドは無い=常に None(→「あなた」)。
+    将来 UserState.name 等が付いたら explore(session を往復)で自動的に拾う。"""
+    user = getattr(req.session, "user", None) if req.session else None
+    return getattr(user, "name", None) if user else None
+
+
+# ── 探索フェーズ: ステップ固定説明({name} は _fill_name で解決)──
 STEP_INTRO = {
-    "intro": "ようこそ。あなたにぴったりの一本、一緒に探そうね",
-    "scene_select": "まず、どんなときに使いたいか教えて?シーンで似合う色が変わるんだ",
-    "capture_wrist": "内側の血管の色から、似合う色のヒントがわかるんだよ",
-    "capture_lip": "次は唇の色を見せて。塗ったときの“仕上がり”を計算するの",
-    "pc_confirm": "あなたのパーソナルカラー、これで合ってるかな?",
-    "pair_compare": "2つの色、どっちが好き?選ぶだけで好みを学んでいくよ",
-    "recommend": "おまたせ。あなたのための色を選んできたよ",
+    "intro": "ようこそ、{name}。今日はぴったりの一本を一緒に見つけましょうね ✨",
+    "scene_select": "まず、どんなときに使いたいか教えてください。シーンで似合う色って変わるんですよ 👀",
+    "capture_wrist": "手首の内側を見せてくださいますか? 血管の色から、似合う色のヒントが分かるんです ✨",
+    "capture_lip": "次は唇の色を。塗ったときの仕上がりを計算しますね 👀",
+    "pc_confirm": "{name}のパーソナルカラー、これで合っていそうですか?",
+    "pair_compare": "これから2色ずつお見せします。ピンとくる方を選ぶだけで、好みを学んでいきますね ✨",
+    "recommend": "おまたせしました。{name}のための色を選んでまいりました 👍",
 }
 
-# シーン×スタイルの組み合わせ起点パターン(TODO(Kawano): 3パターン文面を流し込む)。現状空。
-COMBINATION_PATTERNS: dict = {
-    # 例(仮): "friends+school": "デイリーで盛れる、こなれ感のある色を選んだよ",
+# シーン起点パターン(単一シーン4つのみ・確定)。キー = ソート済みシーンの "+" 連結。
+# 複数シーン選択時はここに該当キーが無い → step_intro("recommend") にフォールバック(現状動作維持)。
+# 複数選択の網羅・第2軸(スタイル)は Phase 2(未実装)。
+COMBINATION_PATTERNS = {
+    "school": "学校で浮かない、さりげなく可愛い色を選んでまいりました ✨",
+    "friends": "お友達と会う日に、気分の上がる色を集めました 👀",
+    "date": "デートにぴったりの、そっと華やぐ色を選びましたよ ✨",
+    "special": "特別な日に映える、とっておきの色をご用意しました 👍",
 }
 
 
-def _step_intro(step: Optional[str]) -> Optional[ConciergeSpeech]:
+def _step_intro(step: Optional[str], name: Optional[str] = None) -> Optional[ConciergeSpeech]:
     if not step:
         return None
     text = STEP_INTRO.get(step)
-    return ConciergeSpeech(type="step_intro", text=text) if text else None
+    return ConciergeSpeech(type="step_intro", text=_fill_name(text, name)) if text else None
 
 
 def _axis_realization(axis_label: str) -> ConciergeSpeech:
-    # TODO(Kawano): 文面差し替え。{axis} は好み軸の日本語ラベル(AXIS_LABELS_JA)。
-    return ConciergeSpeech(type="axis_realization", text=f"なるほど、{axis_label}が好きみたいだね")
+    return ConciergeSpeech(type="axis_realization", text=f"なるほど、{axis_label}がお好みなんですね ✨")
 
 
 # reasons.top_axes[].evidence は「その軸を最も動かした pair_id」の列(bayesian.compute_pref_evidence)。
@@ -75,22 +98,20 @@ _PAIR_LABELS = {
 }
 
 
-def _user_origin_text(axis) -> str:
-    # TODO(Kawano): 文面差し替え。
+def _user_origin_text(axis, name: Optional[str] = None) -> str:
     ev = axis.evidence[0] if getattr(axis, "evidence", None) else None
     pair_label = _PAIR_LABELS.get(ev) if ev else None
     if pair_label:
-        return f"さっき「{pair_label}」で選んだのが効いてる。だからこれ"
+        return f"さっき『{pair_label}』で選んでいたのが効いています。だからこれを ✨"
     # evidence が pair_id でない/無い場合は生値を出さず、軸ラベルで説明(生 ID 漏洩を防ぐ)。
-    return f"あなたは{axis.label}が好きだよね。だからこれ"
+    return _fill_name("{name}は" + f"{axis.label}がお好きですよね。だからこれを ✨", name)
 
 
 def _product_origin_text(trait_label: str) -> str:
-    # TODO(Kawano): 文面差し替え。
-    return f"この色は{trait_label}が出るタイプだよ"
+    return f"この色は{trait_label}が出るタイプなんです"
 
 
-def _reason_speech(reasons: Optional[RecommendReasons]) -> Optional[ConciergeSpeech]:
+def _reason_speech(reasons: Optional[RecommendReasons], name: Optional[str] = None) -> Optional[ConciergeSpeech]:
     if reasons is None:
         return None
     top_axis = reasons.top_axes[0] if reasons.top_axes else None
@@ -100,28 +121,34 @@ def _reason_speech(reasons: Optional[RecommendReasons]) -> Optional[ConciergeSpe
         # productOriginText の「この色は」接頭を落として接続(TS の .replace(/^この色は/,"") と同じ)
         product_tail = _product_origin_text(trait.label).removeprefix("この色は")
         return ConciergeSpeech(
-            type="reason_hybrid", text=f"{_user_origin_text(top_axis)}。しかも{product_tail}"
+            type="reason_hybrid", text=f"{_user_origin_text(top_axis, name)}。しかも{product_tail}"
         )
     if top_axis:
-        return ConciergeSpeech(type="reason_user", text=_user_origin_text(top_axis))
+        return ConciergeSpeech(type="reason_user", text=_user_origin_text(top_axis, name))
     if trait:
         return ConciergeSpeech(type="reason_product", text=_product_origin_text(trait.label))
     return None
 
 
-def _serendipity() -> ConciergeSpeech:
-    # TODO(Kawano): 文面差し替え。
-    return ConciergeSpeech(type="serendipity_offer", text="これはちょっと冒険枠。いつもと違う自分、試してみる?")
+def _serendipity(name: Optional[str] = None) -> ConciergeSpeech:
+    return ConciergeSpeech(
+        type="serendipity_offer",
+        text=_fill_name("こちらは少し冒険枠ですが…いつもと違う{name}も、素敵かもしれませんよ 👀", name),
+    )
 
 
 def _decision_confirm() -> ConciergeSpeech:
-    # TODO(Kawano): 文面差し替え。
-    return ConciergeSpeech(type="decision_confirm", text="いいね、その2〜3本ならどれも似合うよ。じっくり見比べてね")
+    return ConciergeSpeech(
+        type="decision_confirm",
+        text="いいですね。その2〜3本ならどれもお似合いですよ。じっくり見比べてくださいね ✨",
+    )
 
 
 def _decision_final() -> ConciergeSpeech:
-    # TODO(要決定: トーン確認中 / Kawano): 仮の終端台詞。
-    return ConciergeSpeech(type="decision_final", text="どっちも似合う圏内だよ。あとは今日の気分で選んで大丈夫")
+    return ConciergeSpeech(
+        type="decision_final",
+        text="どちらもお似合いの範囲です。あとは今日の気分で選んで大丈夫ですよ 👍",
+    )
 
 
 def _combination_key(scenes: List[str]) -> str:
@@ -156,6 +183,8 @@ def _newly_confident_axis(mu: List[float], var: List[float], spoken: List[str]) 
 
 def generate(req: ConciergeSpeechRequest) -> ConciergeSpeechResponse:
     """状態 → 発話。conciergeScript.ts の selectSpeech を忠実移植(挙動不変)。"""
+    name = _extract_name(req)
+
     if req.phase == "decide":
         speech = _decision_final() if req.is_final else _decision_confirm()
         return ConciergeSpeechResponse(speech=speech, session=None)
@@ -163,18 +192,18 @@ def generate(req: ConciergeSpeechRequest) -> ConciergeSpeechResponse:
     if req.phase == "recommend":
         if req.reasons is not None:
             if req.is_serendipity:
-                return ConciergeSpeechResponse(speech=_serendipity())
-            r = _reason_speech(req.reasons)
+                return ConciergeSpeechResponse(speech=_serendipity(name))
+            r = _reason_speech(req.reasons, name)
             if r is not None:
                 return ConciergeSpeechResponse(speech=r)
         # フォールバック: 組み合わせ起点 or ステップ導入
-        speech = _combination_speech(req.scenes or []) or _step_intro(req.step or "recommend")
+        speech = _combination_speech(req.scenes or []) or _step_intro(req.step or "recommend", name)
         return ConciergeSpeechResponse(speech=speech)
 
     # explore: session(spoken_axes)を往復。新規確信軸があれば実況、無ければ step_intro。
     sess = req.session
     if sess is None:
-        return ConciergeSpeechResponse(speech=_step_intro(req.step))
+        return ConciergeSpeechResponse(speech=_step_intro(req.step, name))
     axis = _newly_confident_axis(
         sess.user.theta_pref.mu, sess.user.theta_pref.var, sess.spoken_axes
     )
@@ -186,4 +215,4 @@ def generate(req: ConciergeSpeechRequest) -> ConciergeSpeechResponse:
             speech=_axis_realization(AXIS_LABELS_JA.get(axis, axis)), session=new_session
         )
     # 実況なし → step_intro(session は不変で返す=caller は常に response.session を使えばよい)
-    return ConciergeSpeechResponse(speech=_step_intro(req.step), session=sess)
+    return ConciergeSpeechResponse(speech=_step_intro(req.step, name), session=sess)

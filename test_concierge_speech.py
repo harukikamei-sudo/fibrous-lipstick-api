@@ -1,8 +1,10 @@
 """concierge_speech.generate の単体テスト + conciergeScript.ts との出力一致(パリティ)確認。
 
-発話ロジックは conciergeScript.ts の忠実移植。ここでは同一入力で **API 側 Python の出力が
-TS のテンプレ文面と一致する**ことを固定文字列で照合(= TS≡API のパリティ実証)。
-発話 API は既存ロジックに触らないので、他テストへの影響はない。
+発話ロジック・文面は conciergeScript.ts と同一に保つ。ここでは同一入力で **API 側 Python の
+出力が TS のテンプレ文面と一致する**ことを固定文字列で照合(= TS≡API のパリティ実証)。
+発話 API は既存の推薦ロジックに触らないので、他テストへの影響はない。
+
+トーン: 上品なホテルのコンシェルジュ風(ですます・絵文字)。名前 {name} は無ければ「あなた」。
 """
 
 import concierge_speech as cs
@@ -55,7 +57,7 @@ def test_explore_axis_realization():
     mu[6], var[6] = 0.8, 0.3   # sheer: 確信(≤0.5)かつ 好意(>0)
     r = cs.generate(ConciergeSpeechRequest(phase="explore", session=_session(mu, var), step="pair_compare"))
     assert r.speech and r.speech.type == "axis_realization"
-    assert r.speech.text == "なるほど、透け感が好きみたいだね", r.speech.text
+    assert r.speech.text == "なるほど、透け感がお好みなんですね ✨", r.speech.text
     assert r.session.spoken_axes == ["sheer"], r.session.spoken_axes
     print(f"  ✓ {r.speech.text} / spoken={r.session.spoken_axes}")
 
@@ -67,7 +69,7 @@ def test_explore_no_repeat():
     r = cs.generate(ConciergeSpeechRequest(
         phase="explore", session=_session(mu, var, spoken=["sheer"]), step="pair_compare"))
     assert r.speech and r.speech.type == "step_intro", r.speech
-    assert r.speech.text == "2つの色、どっちが好き?選ぶだけで好みを学んでいくよ"
+    assert r.speech.text == "これから2色ずつお見せします。ピンとくる方を選ぶだけで、好みを学んでいきますね ✨"
     assert r.session.spoken_axes == ["sheer"]   # 不変
     print(f"  ✓ 二度言わず step_intro / spoken 不変={r.session.spoken_axes}")
 
@@ -100,7 +102,7 @@ def test_explore_pick_most_confident():
     mu[6], var[6] = 0.8, 0.3    # sheer
     mu[2], var[2] = 0.8, 0.2    # brightness(より確信)
     r = cs.generate(ConciergeSpeechRequest(phase="explore", session=_session(mu, var), step="pair_compare"))
-    assert r.speech.text == "なるほど、明るさが好きみたいだね", r.speech.text
+    assert r.speech.text == "なるほど、明るさがお好みなんですね ✨", r.speech.text
     assert r.session.spoken_axes == ["brightness"]
     print(f"  ✓ 最確信を選択: {r.speech.text}")
 
@@ -113,7 +115,7 @@ def test_recommend_hybrid():
     )
     r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=reasons))
     assert r.speech.type == "reason_hybrid"
-    assert r.speech.text == "あなたは透け感が好きだよね。だからこれ。しかもツヤが出るタイプだよ", r.speech.text
+    assert r.speech.text == "あなたは透け感がお好きですよね。だからこれを ✨。しかもツヤが出るタイプなんです", r.speech.text
     print(f"  ✓ {r.speech.text}")
 
 
@@ -123,7 +125,7 @@ def test_recommend_user_with_evidence():
         axis="sheer", label="透け感", contribution=0.5, evidence=["wv_09_sweet_vs_classy"])])
     r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=reasons))
     assert r.speech.type == "reason_user"
-    assert r.speech.text == "さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ", r.speech.text
+    assert r.speech.text == "さっき『甘い vs クラシー』で選んでいたのが効いています。だからこれを ✨", r.speech.text
     print(f"  ✓ {r.speech.text}")
 
 
@@ -132,7 +134,7 @@ def test_recommend_user_unknown_evidence_fallback():
     reasons = _reasons(top_axes=[ReasonAxis(
         axis="sheer", label="透け感", contribution=0.5, evidence=["3問目で選んだ"])])
     r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=reasons))
-    assert r.speech.text == "あなたは透け感が好きだよね。だからこれ", r.speech.text  # 生値 "3問目で選んだ" は出さない
+    assert r.speech.text == "あなたは透け感がお好きですよね。だからこれを ✨", r.speech.text  # 生値 "3問目で選んだ" は出さない
     print(f"  ✓ {r.speech.text}")
 
 
@@ -141,7 +143,7 @@ def test_recommend_product_only():
     r = cs.generate(ConciergeSpeechRequest(
         phase="recommend", reasons=_reasons(traits=[ProductTrait(axis="glossy", label="ツヤ")])))
     assert r.speech.type == "reason_product"
-    assert r.speech.text == "この色はツヤが出るタイプだよ", r.speech.text
+    assert r.speech.text == "この色はツヤが出るタイプなんです", r.speech.text
     print(f"  ✓ {r.speech.text}")
 
 
@@ -151,7 +153,7 @@ def test_recommend_serendipity():
         phase="recommend", reasons=_reasons(top_axes=[ReasonAxis(
             axis="sheer", label="透け感", contribution=0.5, evidence=[])]), is_serendipity=True))
     assert r.speech.type == "serendipity_offer"
-    assert r.speech.text == "これはちょっと冒険枠。いつもと違う自分、試してみる?"
+    assert r.speech.text == "こちらは少し冒険枠ですが…いつもと違うあなたも、素敵かもしれませんよ 👀"
     print(f"  ✓ {r.speech.text}")
 
 
@@ -161,8 +163,28 @@ def test_recommend_empty_fallback():
     r2 = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=None))
     for r in (r1, r2):
         assert r.speech.type == "step_intro"
-        assert r.speech.text == "おまたせ。あなたのための色を選んできたよ", r.speech.text
+        assert r.speech.text == "おまたせしました。あなたのための色を選んでまいりました 👍", r.speech.text
     print("  ✓ 軸なし/None とも step_intro(recommend)にフォールバック")
+
+
+def test_recommend_combination_single_scene():
+    print("Test: recommend で reasons 無 + 単一シーン → COMBINATION_PATTERNS")
+    r = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=None, scenes=["school"]))
+    assert r.speech.type == "reason_user"
+    assert r.speech.text == "学校で浮かない、さりげなく可愛い色を選んでまいりました ✨", r.speech.text
+    # 複数シーンは該当キー無し → step_intro("recommend") にフォールバック
+    r2 = cs.generate(ConciergeSpeechRequest(phase="recommend", reasons=None, scenes=["school", "date"]))
+    assert r2.speech.type == "step_intro"
+    assert r2.speech.text == "おまたせしました。あなたのための色を選んでまいりました 👍", r2.speech.text
+    print("  ✓ 単一=専用文 / 複数=step_intro フォールバック(現状動作維持)")
+
+
+def test_name_fallback():
+    print("Test: {name} は名前があれば「名前+さん」、無ければ「あなた」")
+    assert cs._fill_name("ようこそ、{name}。") == "ようこそ、あなた。"
+    assert cs._fill_name("{name}のための色", "ミナ") == "ミナさんのための色"
+    assert cs._fill_name("{name}は好き", None) == "あなたは好き"
+    print("  ✓ ミナ→ミナさん / 無し→あなた")
 
 
 def test_decide():
@@ -170,41 +192,64 @@ def test_decide():
     rf = cs.generate(ConciergeSpeechRequest(phase="decide", is_final=True))
     rc = cs.generate(ConciergeSpeechRequest(phase="decide", is_final=False))
     assert rf.speech.type == "decision_final"
-    assert rf.speech.text == "どっちも似合う圏内だよ。あとは今日の気分で選んで大丈夫"
+    assert rf.speech.text == "どちらもお似合いの範囲です。あとは今日の気分で選んで大丈夫ですよ 👍"
     assert rc.speech.type == "decision_confirm"
-    assert rc.speech.text == "いいね、その2〜3本ならどれも似合うよ。じっくり見比べてね"
+    assert rc.speech.text == "いいですね。その2〜3本ならどれもお似合いですよ。じっくり見比べてくださいね ✨"
     print(f"  ✓ final={rf.speech.text} / confirm={rc.speech.text}")
 
 
 # ── conciergeScript.ts の期待文面(TS 側テンプレから転記)。API がこれと一致すれば TS≡API。──
+#    {name} 無し(=「あなた」)入力での **全枠** を照合する(単一入力での全枠一致=パリティ実証)。
 TS_PARITY = [
-    ("step_intro/pair_compare", "2つの色、どっちが好き?選ぶだけで好みを学んでいくよ"),
-    ("step_intro/capture_wrist", "内側の血管の色から、似合う色のヒントがわかるんだよ"),
-    ("axis_realization/透け感", "なるほど、透け感が好きみたいだね"),
-    ("reason_user/pairlabel", "さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ"),
-    ("reason_hybrid", "あなたは透け感が好きだよね。だからこれ。しかもツヤが出るタイプだよ"),
-    ("serendipity", "これはちょっと冒険枠。いつもと違う自分、試してみる?"),
-    ("decision_confirm", "いいね、その2〜3本ならどれも似合うよ。じっくり見比べてね"),
-    ("decision_final", "どっちも似合う圏内だよ。あとは今日の気分で選んで大丈夫"),
+    ("step_intro/intro", "ようこそ、あなた。今日はぴったりの一本を一緒に見つけましょうね ✨"),
+    ("step_intro/scene_select", "まず、どんなときに使いたいか教えてください。シーンで似合う色って変わるんですよ 👀"),
+    ("step_intro/capture_wrist", "手首の内側を見せてくださいますか? 血管の色から、似合う色のヒントが分かるんです ✨"),
+    ("step_intro/capture_lip", "次は唇の色を。塗ったときの仕上がりを計算しますね 👀"),
+    ("step_intro/pc_confirm", "あなたのパーソナルカラー、これで合っていそうですか?"),
+    ("step_intro/pair_compare", "これから2色ずつお見せします。ピンとくる方を選ぶだけで、好みを学んでいきますね ✨"),
+    ("step_intro/recommend", "おまたせしました。あなたのための色を選んでまいりました 👍"),
+    ("axis_realization/透け感", "なるほど、透け感がお好みなんですね ✨"),
+    ("reason_user/pairlabel", "さっき『甘い vs クラシー』で選んでいたのが効いています。だからこれを ✨"),
+    ("reason_user/no_evidence", "あなたは透け感がお好きですよね。だからこれを ✨"),
+    ("reason_product", "この色はツヤが出るタイプなんです"),
+    ("reason_hybrid", "あなたは透け感がお好きですよね。だからこれを ✨。しかもツヤが出るタイプなんです"),
+    ("serendipity", "こちらは少し冒険枠ですが…いつもと違うあなたも、素敵かもしれませんよ 👀"),
+    ("decision_confirm", "いいですね。その2〜3本ならどれもお似合いですよ。じっくり見比べてくださいね ✨"),
+    ("decision_final", "どちらもお似合いの範囲です。あとは今日の気分で選んで大丈夫ですよ 👍"),
+    ("combination/school", "学校で浮かない、さりげなく可愛い色を選んでまいりました ✨"),
+    ("combination/friends", "お友達と会う日に、気分の上がる色を集めました 👀"),
+    ("combination/date", "デートにぴったりの、そっと華やぐ色を選びましたよ ✨"),
+    ("combination/special", "特別な日に映える、とっておきの色をご用意しました 👍"),
 ]
 
 
 def test_ts_parity_table():
-    print("Test: TS(conciergeScript.ts)≡ API(concierge_speech.py)出力一致表")
-    # API 側で同じ入力を生成
-    mu, var = _flat(); mu[6], var[6] = 0.8, 0.3
+    print("Test: TS(conciergeScript.ts)≡ API(concierge_speech.py)出力一致表(全枠)")
+    # API 側で同じ入力を生成(名前無し=「あなた」)
     api = {
-        "step_intro/pair_compare": cs._step_intro("pair_compare").text,
+        "step_intro/intro": cs._step_intro("intro").text,
+        "step_intro/scene_select": cs._step_intro("scene_select").text,
         "step_intro/capture_wrist": cs._step_intro("capture_wrist").text,
+        "step_intro/capture_lip": cs._step_intro("capture_lip").text,
+        "step_intro/pc_confirm": cs._step_intro("pc_confirm").text,
+        "step_intro/pair_compare": cs._step_intro("pair_compare").text,
+        "step_intro/recommend": cs._step_intro("recommend").text,
         "axis_realization/透け感": cs._axis_realization("透け感").text,
         "reason_user/pairlabel": cs._reason_speech(_reasons(top_axes=[ReasonAxis(
             axis="sweetness", label="甘さ", contribution=0.5, evidence=["wv_09_sweet_vs_classy"])])).text,
+        "reason_user/no_evidence": cs._reason_speech(_reasons(top_axes=[ReasonAxis(
+            axis="sheer", label="透け感", contribution=0.5, evidence=[])])).text,
+        "reason_product": cs._reason_speech(_reasons(traits=[ProductTrait(axis="glossy", label="ツヤ")])).text,
         "reason_hybrid": cs._reason_speech(_reasons(
             top_axes=[ReasonAxis(axis="sheer", label="透け感", contribution=0.5, evidence=[])],
             traits=[ProductTrait(axis="glossy", label="ツヤ")])).text,
         "serendipity": cs._serendipity().text,
         "decision_confirm": cs._decision_confirm().text,
         "decision_final": cs._decision_final().text,
+        "combination/school": cs._combination_speech(["school"]).text,
+        "combination/friends": cs._combination_speech(["friends"]).text,
+        "combination/date": cs._combination_speech(["date"]).text,
+        "combination/special": cs._combination_speech(["special"]).text,
     }
     print(f"  {'ケース':<26}{'一致':<5} テキスト")
     for key, ts_text in TS_PARITY:
@@ -212,7 +257,7 @@ def test_ts_parity_table():
         ok = got == ts_text
         print(f"  {key:<26}{'✓' if ok else '✗ NG':<5} {got}")
         assert ok, f"TS≠API: {key}\n  TS ={ts_text}\n  API={got}"
-    print("  ✓ 全ケースで TS≡API 一致")
+    print("  ✓ 全枠(19)で TS≡API 一致")
 
 
 if __name__ == "__main__":
@@ -227,7 +272,9 @@ if __name__ == "__main__":
     test_recommend_product_only()
     test_recommend_serendipity()
     test_recommend_empty_fallback()
+    test_recommend_combination_single_scene()
+    test_name_fallback()
     test_decide()
     test_ts_parity_table()
     print("=" * 50)
-    print("✅ concierge_speech: 全 13 テスト合格(TS パリティ含む)")
+    print("✅ concierge_speech: 全 15 テスト合格(TS パリティ全枠含む)")

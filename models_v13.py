@@ -481,6 +481,11 @@ class PopularResponse(BaseModel):
 # 既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。
 
 ConciergePhase = Literal["explore", "recommend", "decide"]
+# 【将来拡張・今は増やさない】双方向チャット相談機能(/v14/concierge_chat・Phase 2+)を足す場合、
+#   その自由対話の返答は新種別 "chat_reply" として ここに追加する想定。現行の一方通行テンプレ
+#   (/v14/concierge_speech)とは別系統・別モデルで共存させる(LOG「将来像」/ API_GUIDE 参照)。
+#   前提=LLM 必須・チャット UI 必須・「LLM 不使用」MTG 合意の見直し。実装時に別 PR で追加=現状は
+#   Literal 不変(CI・TS パリティ不変)。
 ConciergeSpeechType = Literal[
     "step_intro", "axis_realization", "reason_user", "reason_product",
     "reason_hybrid", "serendipity_offer", "decision_confirm", "decision_final",

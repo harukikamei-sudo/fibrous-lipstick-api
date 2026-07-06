@@ -740,7 +740,16 @@ curl -sX POST .../v14/concierge_speech -d '{"phase":"decide","is_final":true}'
 
 - **状態管理**: 中間実況の重複防止・予算(最大3回)は `session.spoken_axes` に相乗り(caller は session を往復するだけ・中身を知らなくてよい)。spoken_axes が要るのは explore のみ。
 - **軸実況は μ_pref>0(好意方向)のみ**・確信(var ≤ RHO·TAU2)した軸を1つ。否定方向は黙る(Phase 2)。
-- 文面テンプレは Kawano 3パターン待ち=現状は仮テキスト(妖精トーン)。ロジックは `conciergeScript.ts` の忠実移植(TS パリティテスト有)。
+- 文面は **Haruki 作成の確定版**(上品なホテルのコンシェルジュ風・ですます・絵文字 ✨👍👀・対象 Mina)。名前は `{name}` を「名前+さん」に解決、無ければ「あなた」(現状 name フィールド無=実質「あなた」)。ロジック・文面は `conciergeScript.ts` と同一(TS≡API 全枠パリティテスト有)。
+
+#### 【将来拡張・未実装】双方向チャット相談機能 `POST /v14/concierge_chat`(Phase 2+)
+
+現行 `/v14/concierge_speech` は **一方通行・テンプレ**(状態 → 定型文、LLM 不使用)。将来ユーザーが自由入力で
+相談できる **双方向チャット**(例:「学校でもバレない?」「これ落ちにくい?」にその場で答える)を足す場合は、
+**別エンドポイント `/v14/concierge_chat` を新設**し、speech 系統とは **別系統で共存**させる想定
+(speech=導線上の決め打ち発話 / chat=自由対話)。返答種別は将来 `ConciergeSpeechType` に `chat_reply` を足す想定
+(models_v13.py にコメントで予約済み)。**前提**: LLM 必須 / フロントにチャット UI 必須 / 「LLM 不使用」の MTG 合意の
+見直しが必要 → 詳細は [LOG.md](LOG.md) 「将来像」。※現時点は**未実装・拡張余地の明示のみ**。
 
 > v14 の全フィールド定義は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) §4.6/§4.7、最新 OpenAPI は `openapi.json`(CI 再生成済み)。
 
