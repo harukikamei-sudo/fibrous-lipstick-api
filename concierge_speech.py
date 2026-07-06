@@ -9,9 +9,10 @@
   語尾はですます。絵文字あり(✨👍👀)。対象は Mina(15歳・メイク初心者・失敗不安)。
   文面は Haruki 作成の確定版(旧「妖精・タメ口/ Kawano 3パターン待ち」から変更)。
   LLM は使わない(デモ安定性・出力統制)。
-【名前】{name} プレースホルダは _fill_name で解決。名前があれば「名前+さん」、無ければ
-  「あなた」。現状 UserState に name フィールドは無い=実質「あなた」固定。将来 name 入力が
-  付いたら _extract_name が拾い、テンプレの {name} がそのまま効く(テンプレは残す)。
+【名前】プレースホルダは _fill_name で解決。{name}=所有格/主語位置(名前+さん / あなた)、
+  {name_voc}=呼びかけ位置(、名前さん / 無名時は省略)。現状 UserState に name フィールドは
+  無い=実質「あなた」/呼びかけ省略。将来 name 入力が付いたら _extract_name が拾い、テンプレの
+  {name}/{name_voc} がそのまま効く(テンプレは残す)。
 【状態管理】中間実況の重複/予算は V14Session.spoken_axes に相乗り(caller が session を往復)。
   spoken_axes が要るのは explore のみ(=session を往復しているフェーズ)。
 【RHO 同期】CONCIERGE_RHO は recommend_v2.RHO_CONFIDENT(=0.5)と同値。skimage 依存を避け
@@ -36,9 +37,16 @@ PAIR_REALIZATION_BUDGET = 3    # ペア比較中の中間実況の発話予算(�
 
 
 def _fill_name(text: str, name: Optional[str] = None) -> str:
-    """{name} を解決。名前があれば「名前+さん」、無ければ「あなた」。
-    conciergeScript.ts の fillName と同一(変更時は両方直す)。"""
-    return text.replace("{name}", f"{name}さん" if name else "あなた")
+    """名前プレースホルダを解決(conciergeScript.ts の fillName と同一・変更時は両方直す)。
+
+    - {name_voc} = 呼びかけ位置: 名前あれば「、名前さん」/ 無ければ省略(空文字)。
+      無名時に「ようこそ、あなた。」と硬くならないよう、読点ごと落とす。
+    - {name}     = 所有格/主語位置: 名前あれば「名前さん」/ 無ければ「あなた」
+      (「あなたの…」「あなたは…」等で自然に馴染むのでそのまま)。
+    """
+    voc = f"、{name}さん" if name else ""
+    subj = f"{name}さん" if name else "あなた"
+    return text.replace("{name_voc}", voc).replace("{name}", subj)
 
 
 def _extract_name(req: ConciergeSpeechRequest) -> Optional[str]:
@@ -50,7 +58,7 @@ def _extract_name(req: ConciergeSpeechRequest) -> Optional[str]:
 
 # ── 探索フェーズ: ステップ固定説明({name} は _fill_name で解決)──
 STEP_INTRO = {
-    "intro": "ようこそ、{name}。今日はぴったりの一本を一緒に見つけましょうね ✨",
+    "intro": "ようこそ{name_voc}。今日はぴったりの一本を一緒に見つけましょうね ✨",
     "scene_select": "まず、どんなときに使いたいか教えてください。シーンで似合う色って変わるんですよ 👀",
     "capture_wrist": "手首の内側を見せてくださいますか? 血管の色から、似合う色のヒントが分かるんです ✨",
     "capture_lip": "次は唇の色を。塗ったときの仕上がりを計算しますね 👀",

@@ -180,11 +180,20 @@ def test_recommend_combination_single_scene():
 
 
 def test_name_fallback():
-    print("Test: {name} は名前があれば「名前+さん」、無ければ「あなた」")
-    assert cs._fill_name("ようこそ、{name}。") == "ようこそ、あなた。"
+    print("Test: {name}=所有格/主語(名前+さん / あなた)")
     assert cs._fill_name("{name}のための色", "ミナ") == "ミナさんのための色"
     assert cs._fill_name("{name}は好き", None) == "あなたは好き"
-    print("  ✓ ミナ→ミナさん / 無し→あなた")
+    print("  ✓ ミナ→ミナさん / 無し→あなた(所有格・主語)")
+
+
+def test_name_vocative():
+    print("Test: {name_voc}=呼びかけ(名前あれば「、名前さん」/ 無ければ省略)")
+    assert cs._fill_name("ようこそ{name_voc}。", "ミナ") == "ようこそ、ミナさん。"
+    assert cs._fill_name("ようこそ{name_voc}。", None) == "ようこそ。"   # 「、あなた」ごと省略
+    # intro 全文の出し分け
+    assert cs._step_intro("intro", "ミナ").text == "ようこそ、ミナさん。今日はぴったりの一本を一緒に見つけましょうね ✨"
+    assert cs._step_intro("intro", None).text == "ようこそ。今日はぴったりの一本を一緒に見つけましょうね ✨"
+    print("  ✓ 名前あり=呼びかけ / 無名=省略")
 
 
 def test_decide():
@@ -201,7 +210,7 @@ def test_decide():
 # ── conciergeScript.ts の期待文面(TS 側テンプレから転記)。API がこれと一致すれば TS≡API。──
 #    {name} 無し(=「あなた」)入力での **全枠** を照合する(単一入力での全枠一致=パリティ実証)。
 TS_PARITY = [
-    ("step_intro/intro", "ようこそ、あなた。今日はぴったりの一本を一緒に見つけましょうね ✨"),
+    ("step_intro/intro", "ようこそ。今日はぴったりの一本を一緒に見つけましょうね ✨"),
     ("step_intro/scene_select", "まず、どんなときに使いたいか教えてください。シーンで似合う色って変わるんですよ 👀"),
     ("step_intro/capture_wrist", "手首の内側を見せてくださいますか? 血管の色から、似合う色のヒントが分かるんです ✨"),
     ("step_intro/capture_lip", "次は唇の色を。塗ったときの仕上がりを計算しますね 👀"),
@@ -274,7 +283,8 @@ if __name__ == "__main__":
     test_recommend_empty_fallback()
     test_recommend_combination_single_scene()
     test_name_fallback()
+    test_name_vocative()
     test_decide()
     test_ts_parity_table()
     print("=" * 50)
-    print("✅ concierge_speech: 全 15 テスト合格(TS パリティ全枠含む)")
+    print("✅ concierge_speech: 全 16 テスト合格(TS パリティ全枠含む)")
