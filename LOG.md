@@ -1374,3 +1374,9 @@ mina/yuki 対照**の系列で完全に決着:
    thickness 観測に含めるかは Phase 2 で再検討。
 9. **観測重みの viewed_seconds 反映**(設計書 §12.6): `log(1+viewed_seconds)` で
    観測ノイズを調整する経路。現状は重みなし。
+10. **★[マージ前ブロッカー] color-capture の preview 向け設定を main マージ前に撤去**:
+    v14 プレビュー検証のため color-capture(`feat/v14-recommend`)に入れた **`.env.production`
+    と apiClient の preview 向け設定**(`NEXT_PUBLIC_LIP_API_URL` をプレビュー v14 Space
+    `https://tamable-fibrous-lipstick-api-v14.hf.space` に向ける等)を、**main マージ前に必ず外す/本番
+    API に戻す**。外し忘れると本番フロントがプレビュー Space を叩き続ける。※対象は API repo でなく
+    color-capture repo。エポック17(2026-07-04)の暫定措置で、マージ時に解消すべき技術的負債。
