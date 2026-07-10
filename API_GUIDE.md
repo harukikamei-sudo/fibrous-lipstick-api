@@ -622,7 +622,10 @@ API は数値・ラベル・来歴のみ返す)。読まない既存クライア
   事後が尖るほどスコアが分離して**減る**(絞り込みの進行)。退化(全同値)時は TOP-N 件数。
   **表示専用の派生指標で TOP-N 選定・スコアには不使用**。
   ※ 当初設計の「R_final>中央値の個数」は中央値分割が常に≈N/2で減らないため破棄・置換。
-  /v14(逐次ペア比較)の start / next でも同じ指標を返す予定(A3)。
+- **/v14 ではラチェット済み(2026-07-10)**: competitive set は事後のスナップショットで
+  1 問ごとの単調減少は保証されない(5→6 に増え得る)ため、/v14 の start/next が返す
+  `candidate_count` は `min(過去最小, 今回生値)`(`session.cc_floor` 相乗り)で**単調非増加を保証**。
+  生値は `candidate_count_raw` に併載(診断用)。/v13/recommend の `candidate_count` は生値のまま。
 
 ---
 
@@ -690,7 +693,7 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/update_user \
 curl -sX POST https://tamable-fibrous-lipstick-api.hf.space/v14/pair_compare/start \
   -H 'Content-Type: application/json' \
   -d '{"lip_lab":{"L":62,"a":22,"b":12},"scenes":["school","friends"],"pc_season":"ブルベ夏"}'
-# → {session, n_pairs_total:8, first_pair:{pair_id,pair_type,left/right:{...,effective_lab}}, candidate_count, catalog_size}
+# → {session, n_pairs_total:8, first_pair:{pair_id,pair_type,left/right:{...,effective_lab}}, candidate_count, catalog_size, candidate_count_raw}
 ```
 
 ### POST `/v14/pair_compare/next` — 選択 → 更新 → 次のペア
@@ -700,7 +703,7 @@ curl -sX POST https://tamable-fibrous-lipstick-api.hf.space/v14/pair_compare/sta
 ```bash
 curl -sX POST .../v14/pair_compare/next \
   -d '{"session":<前レスポンスの session>,"pair_id":"color_01_bright_vs_deep","chose":"left"}'
-# → {session, done, next_pair|null, theta_snapshot:{pref_mu,pref_var,top_shrunk_axis}, candidate_count}
+# → {session, done, next_pair|null, theta_snapshot:{pref_mu,pref_var,top_shrunk_axis}, candidate_count(単調非増加・ラチェット済), candidate_count_raw}
 ```
 - `theta_snapshot`: 中間実況用(コンシェルジュが「透け感が好きみたいだね」)。同一ペアは二度出さない。
 

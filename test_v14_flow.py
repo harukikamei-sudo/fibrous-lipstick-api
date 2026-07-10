@@ -30,6 +30,7 @@ def test_v14_flow() -> None:
     cur_pair = d["first_pair"]
     seen: set = set()
     answered = 0
+    prev_cc = d["candidate_count"]
     while True:
         pid = cur_pair["pair_id"]
         assert pid not in seen, f"同一ペアを二度提示: {pid}"   # 二度出さない
@@ -42,7 +43,13 @@ def test_v14_flow() -> None:
         answered += 1
         session = dn["session"]
         assert len(dn["theta_snapshot"]["pref_mu"]) == 20, "theta_snapshot 不正"
+        # ラチェット: 表示用 candidate_count は単調非増加(「絞り込めました」演出と整合)。
+        # 生値(candidate_count_raw)は増減してよいが必ず併載される。
         assert dn["candidate_count"] >= 1
+        assert dn["candidate_count"] <= prev_cc, (
+            f"candidate_count が増えた(ラチェット破れ): {prev_cc} → {dn['candidate_count']}")
+        assert dn["candidate_count_raw"] >= 1, "candidate_count_raw 欠落"
+        prev_cc = dn["candidate_count"]
         if dn["done"]:
             assert dn["next_pair"] is None, "done なのに next_pair がある"
             break
@@ -50,7 +57,24 @@ def test_v14_flow() -> None:
         assert cur_pair is not None, "未完了なのに next_pair が無い"
         assert answered <= 12, "done にならない(無限ループの疑い)"
     assert answered == 8, f"answered={answered} != 8"
-    print(f"  ✓ {answered} 問で done / 二度出しなし / theta_snapshot(20次元)あり")
+    print(f"  ✓ {answered} 問で done / 二度出しなし / candidate_count 単調非増加(ラチェット)")
+
+
+def test_v14_session_carries_spoken_axes_and_floor() -> None:
+    print("Test 1.5: /next が spoken_axes を落とさない + cc_floor 相乗り")
+    d = client.post("/v14/pair_compare/start", json={
+        "lip_lab": {"L": 62, "a": 22, "b": 12}, "scenes": ["date"]}).json()
+    session = dict(d["session"])
+    # コンシェルジュが実況済みの想定(spoken_axes に値が載った session を /next に渡す)
+    session["spoken_axes"] = ["glossy"]
+    rn = client.post("/v14/pair_compare/next", json={
+        "session": session, "pair_id": d["first_pair"]["pair_id"], "chose": "left"})
+    assert rn.status_code == 200, rn.text
+    sn = rn.json()["session"]
+    # 旧実装は V14Session を新規構築して spoken_axes を毎回 [] に落としていた(潜在バグ)
+    assert sn["spoken_axes"] == ["glossy"], f"spoken_axes が落ちた: {sn['spoken_axes']}"
+    assert sn["cc_floor"] == rn.json()["candidate_count"], "cc_floor が表示値と不一致"
+    print("  ✓ spoken_axes 持ち回り / cc_floor=表示値 で相乗り")
 
 
 def test_effective_lab_depends_on_lip() -> None:
@@ -111,9 +135,10 @@ def test_v13_regression() -> None:
 
 if __name__ == "__main__":
     test_v14_flow()
+    test_v14_session_carries_spoken_axes_and_floor()
     test_effective_lab_depends_on_lip()
     test_determinism_first_pair()
     test_concierge_speech_endpoint()
     test_v13_regression()
     print("=" * 50)
-    print("✅ v14_flow: 全 5 テスト合格")
+    print("✅ v14_flow: 全 6 テスト合格")

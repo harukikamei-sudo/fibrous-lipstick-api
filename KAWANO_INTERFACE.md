@@ -313,15 +313,16 @@ R_final(似合い)と EIG(期待情報利得)をブレンドし、探索性 `θ_
 ```
 POST /v14/pair_compare/start
   in : { lip_lab, scenes?, pc_season?, warmness?, mu_thickness?=0.5 }
-  out: { session, n_pairs_total(=8), first_pair: PairV14, candidate_count, catalog_size }
+  out: { session, n_pairs_total(=8), first_pair: PairV14, candidate_count, catalog_size, candidate_count_raw }
 
 POST /v14/pair_compare/next
   in : { session, pair_id, chose:"left"|"right" }
-  out: { session, done, next_pair?: PairV14, theta_snapshot, candidate_count }
+  out: { session, done, next_pair?: PairV14, theta_snapshot, candidate_count, candidate_count_raw }
 ```
 
-- **session はクライアント往復方式**(`{ user: UserState, asked_pair_ids: [...] }`)。サーバ側に
-  セッションを持たない(v13 の UserState 往復と同じ思想)。毎回 out の session をそのまま次の in に渡す。
+- **session はクライアント往復方式**(`{ user: UserState, asked_pair_ids: [...], spoken_axes: [...], cc_floor? }`)。
+  サーバ側にセッションを持たない(v13 の UserState 往復と同じ思想)。毎回 out の session を**そのまま**次の in に渡す
+  (spoken_axes=コンシェルジュ実況の重複防止、cc_floor=絞り込みカウンタのラチェット。フロントは中身を触らない)。
 - **`PairV14` は left/right に `effective_lab` を含む**(`lip_lab + μ_thickness` の K-M 塗布後 Lab)。
   フロントはこれで**本人の唇画像を再着色**して比較(パッケージ画像をやめ、観測とモデル仮定を整合)。
   そのため start で **`lip_lab` を渡す必要がある**(ここが v13 との接続差・MTG §5-1)。
@@ -332,7 +333,12 @@ POST /v14/pair_compare/next
   ペア σ²。詳細は `pair_eig.py`。動的打ち切りはしない(進捗バーの終端を見せる=UX確定仕様)。
 - **`theta_snapshot`**(中間実況用): `theta_pref` の現在 mu/var + 直前で σ² が最も縮んだ軸名。
   コンシェルジュ(F3)が「透け感が好きみたいだね」と実況するのに使う。
-- **`candidate_count`**(絞り込みカウンタ): その時点の事後での残候補数(competitive set・§ A2-fix)。
+- **`candidate_count`**(絞り込みカウンタ・**2026-07-10 ラチェット化**): 表示用の値は
+  **単調非増加を保証**(「◯件まで絞り込めました」演出と整合)。内部の competitive set(§ A2-fix)は
+  事後のスナップショットで 1 問ごとに増減し得る(例 5→6。Kawano さん報告の現象=バグでなく定義上の挙動)ため、
+  `min(過去最小, 今回生値)` のラチェットを API 側でかけた。**フロントは無変更で直る**。
+  生値は `candidate_count_raw` に併載(診断用・増減し得る)。過去最小値は `session.cc_floor` に相乗り
+  (spoken_axes と同型。フロントは session を往復するだけで中身を知らなくてよい)。
 - N_PAIRS は既定 8(`app.N_PAIRS_V14`)。**A4 検証で 8 を確定**(scene+7 で flat+10 と hit 同等、+8 で σ²・世界観カバレッジに余裕)。
 
 ---

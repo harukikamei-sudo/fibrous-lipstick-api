@@ -409,6 +409,13 @@ class V14Session(BaseModel):
     # 表示状態を推薦セッションに相乗りさせる=関心の軽い混在だが、RN(Kawano)側のフロント
     # 新規実装をゼロにする判断(spoken_axes が要るのは explore のみ=session を往復中のため)。
     spoken_axes: List[str] = Field(default_factory=list)
+    # candidate_count ラチェット(表示用の過去最小値)。competitive set は事後の
+    # スナップショットで 1 問ごとの単調減少は保証されない(5→6 に増え得る)ため、
+    # 表示値は min(過去最小, 今回生値) で単調非増加を保証する。生値は
+    # candidate_count_raw でレスポンスに併載(正直さ・診断用)。spoken_axes と同じ相乗り設計。
+    cc_floor: Optional[int] = Field(
+        None, description="candidate_count の過去最小値(表示ラチェット用・フロントは触らない)"
+    )
 
 
 class ThetaSnapshot(BaseModel):
@@ -434,8 +441,11 @@ class V14StartResponse(BaseModel):
     session: V14Session
     n_pairs_total: int
     first_pair: PairV14
-    candidate_count: int
+    candidate_count: int  # 表示用(ラチェット済=単調非増加)。「絞り込めました」演出と整合
     catalog_size: int
+    candidate_count_raw: Optional[int] = Field(
+        None, description="ラチェット前の生 competitive set 数(診断用。増減し得る)"
+    )
 
 
 class V14NextRequest(BaseModel):
@@ -449,7 +459,10 @@ class V14NextResponse(BaseModel):
     done: bool
     next_pair: Optional[PairV14] = None
     theta_snapshot: ThetaSnapshot
-    candidate_count: int
+    candidate_count: int  # 表示用(ラチェット済=単調非増加)
+    candidate_count_raw: Optional[int] = Field(
+        None, description="ラチェット前の生 competitive set 数(診断用。増減し得る)"
+    )
 
 
 # ============ /v13/popular: ユーザー非依存の「みんなの定番」(F4-fix #5)============

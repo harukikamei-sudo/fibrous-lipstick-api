@@ -796,13 +796,17 @@ def v14_pair_compare_start(req: V14StartRequest):
     if best is None:
         raise HTTPException(status_code=503, detail="ペアバンクが空")
     first_pair, _eig = best
-    cc, cs = _v14_candidate_count(user, km_table)
+    cc_raw, cs = _v14_candidate_count(user, km_table)
+    # ラチェット初期化: 初回は生値がそのまま表示値&floor になる
     return V14StartResponse(
-        session=V14Session(user=user, asked_pair_ids=[first_pair.pair_id]),
+        session=V14Session(
+            user=user, asked_pair_ids=[first_pair.pair_id], cc_floor=cc_raw
+        ),
         n_pairs_total=N_PAIRS_V14,
         first_pair=pair_eig.pair_v14(first_pair, row_by_id, req.mu_thickness),
-        candidate_count=cc,
+        candidate_count=cc_raw,
         catalog_size=cs,
+        candidate_count_raw=cc_raw,
     )
 
 
@@ -839,13 +843,24 @@ def v14_pair_compare_next(req: V14NextRequest):
             asked.append(np_pair.pair_id)  # 二度出さない: 提示時点で asked に積む
             next_pair_payload = pair_eig.pair_v14(np_pair, row_by_id, mu_t)
 
-    cc, cs = _v14_candidate_count(new_user, km_table)
+    cc_raw, _cs = _v14_candidate_count(new_user, km_table)
+    # 表示ラチェット: competitive set は事後のスナップショットで単調でない(5→6 に増え得る)。
+    # 「絞り込めました」演出と整合するよう表示値は min(過去最小, 今回生値)=単調非増加を保証。
+    # 生値は candidate_count_raw に併載(診断用)。floor は session 相乗り(spoken_axes と同型)。
+    prev_floor = req.session.cc_floor
+    cc_display = cc_raw if prev_floor is None else min(prev_floor, cc_raw)
     return V14NextResponse(
-        session=V14Session(user=new_user, asked_pair_ids=asked),
+        session=V14Session(
+            user=new_user,
+            asked_pair_ids=asked,
+            spoken_axes=req.session.spoken_axes,
+            cc_floor=cc_display,
+        ),
         done=done,
         next_pair=next_pair_payload,
         theta_snapshot=snap,
-        candidate_count=cc,
+        candidate_count=cc_display,
+        candidate_count_raw=cc_raw,
     )
 
 

@@ -1366,6 +1366,18 @@ mina/yuki 対照**の系列で完全に決着:
   CI green → **PR #1**(https://github.com/YK-0204/fibrous-lipstick-ui/pull/1)を Kawano さん宛に作成。main へは自分でマージしない。
 - **リポジトリの正の移動**: フロントの主戦場は color-capture → **fibrous-lipstick-ui** に移行。
   color-capture の `feat/v14-recommend` は参照用として残す(README に注記)。
+- **candidate_count ラチェット化(Kawano 報告②「140件中5→6に増える」への対応・2026-07-10)**:
+  **診断=バグではなく定義上の挙動**。competitive set(threshold=5位−0.15·(1位−5位)、A2-fix)は事後の
+  スナップショットで、EIG ペアが毎回「最も不確実な軸」を突く以上、回答が中位商品群を押し上げれば圏内件数は
+  増える(spread 変化で閾値自体も動く)。A4 で見たのは全体傾向の縮小で、±1〜2 の揺れは織り込み。
+  問題は文言「絞り込めました」と非単調な数字の**演出の不整合**。
+  **採用=案A(API 側ラチェット)**: 表示 `candidate_count = min(過去最小, 今回生値)` で単調非増加を保証、
+  過去最小は `V14Session.cc_floor` に相乗り(spoken_axes と同型・フロント無変更で直る=RN/Next 二重実装回避の
+  方針に整合)。生値は `candidate_count_raw` で併載(正直さ・診断用)。案B(文言変更)・案C(フロント min=
+  二重実装)は不採用。test_v14_flow に単調性 assert 追加。
+  **副発見・修正**: 旧 `/v14/pair_compare/next` は V14Session を新規構築しており **`spoken_axes` を毎回
+  落としていた**(コンシェルジュ実況の重複防止/予算がリセットされる潜在バグ)→ 持ち回りに修正 + 回帰テスト
+  (test_v14_session_carries_spoken_axes_and_floor)。
 
 ---
 
