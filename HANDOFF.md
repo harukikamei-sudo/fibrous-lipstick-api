@@ -26,7 +26,8 @@
 プレビュー Space 再デプロイ・ライブ3パターン検証済み。詳細 LOG エポック18。
 
 **人間/Kawano 待ち**: ① PR #1 のレビュー&マージ(Kawano さん)② ブラウザ通し確認(Haruki・.env を v14 プレビュー Space に)
-③ AR 観測への extras{action,kept,decided} 追加の要否 ④ コンシェルジュ文面3パターン ⑤ API feat/v14 → main マージ計画
+③ コンシェルジュ文面3パターン ④ API feat/v14 → main マージ計画 ⑤ 決定後の完了演出デザイン(Kawano さん)
+※ extras{action,kept,decided} は**実装済み**(承認済・❤️/✕/「この色に決める」に付与。LOG エポック18)。
 
 ---
 

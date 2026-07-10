@@ -1378,6 +1378,12 @@ mina/yuki 対照**の系列で完全に決着:
   **副発見・修正**: 旧 `/v14/pair_compare/next` は V14Session を新規構築しており **`spoken_axes` を毎回
   落としていた**(コンシェルジュ実況の重複防止/予算がリセットされる潜在バグ)→ 持ち回りに修正 + 回帰テスト
   (test_v14_session_carries_spoken_axes_and_floor)。
+- **extras{action,kept,decided} を AR 観測に実装(人間承認「それないとあかんでしょ」・2026-07-10)**:
+  fibrous-lipstick-ui の ❤️/✕ に extras 付与 + **「💄 この色に決める」ボタン**を新設
+  (`extras:{action:"decide", decided:true}`)。decide は再推薦せず終点扱い。API 側は F4-fix #4 の
+  Observation.extras で受け入れ済み(ベイズ更新不使用=Phase 2 の購買意思データ収集)。
+  like と decide の区別は今記録しないと後から取り返せない、が判断理由。プレビュー Space で受理をライブ確認。
+  決定後の完了演出は Kawano さんのデザイン課題として残置。
 
 ---
 
