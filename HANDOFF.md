@@ -19,6 +19,12 @@
 
 **フロントの主戦場は fibrous-lipstick-ui に移行**。color-capture(feat/v14-recommend)は参照用として残置。
 
+**Kawano 報告②「絞り込みカウンタが 5→6 に増える」対応済み(2026-07-10)**: バグでなく competitive set の
+定義上の挙動(生値は 5→10 まで暴れることをライブ実測)。/v14 の `candidate_count` を**表示ラチェット化**
+(min(過去最小, 生値)=単調非増加保証、floor は `session.cc_floor` 相乗り、生値は `candidate_count_raw` 併載)。
+副発見の **spoken_axes 落ちバグ**(/next が session 再構築で毎回 [] に)も修正。テスト6件・CI green・
+プレビュー Space 再デプロイ・ライブ3パターン検証済み。詳細 LOG エポック18。
+
 **人間/Kawano 待ち**: ① PR #1 のレビュー&マージ(Kawano さん)② ブラウザ通し確認(Haruki・.env を v14 プレビュー Space に)
 ③ AR 観測への extras{action,kept,decided} 追加の要否 ④ コンシェルジュ文面3パターン ⑤ API feat/v14 → main マージ計画
 

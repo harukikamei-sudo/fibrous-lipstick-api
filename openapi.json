@@ -2757,6 +2757,18 @@
           "candidate_count": {
             "type": "integer",
             "title": "Candidate Count"
+          },
+          "candidate_count_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count Raw",
+            "description": "ラチェット前の生 competitive set 数(診断用。増減し得る)"
           }
         },
         "type": "object",
@@ -2786,6 +2798,18 @@
             },
             "type": "array",
             "title": "Spoken Axes"
+          },
+          "cc_floor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Floor",
+            "description": "candidate_count の過去最小値(表示ラチェット用・フロントは触らない)"
           }
         },
         "type": "object",
@@ -2876,6 +2900,18 @@
           "catalog_size": {
             "type": "integer",
             "title": "Catalog Size"
+          },
+          "candidate_count_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count Raw",
+            "description": "ラチェット前の生 competitive set 数(診断用。増減し得る)"
           }
         },
         "type": "object",
