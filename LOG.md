@@ -1348,6 +1348,25 @@ mina/yuki 対照**の系列で完全に決着:
   → PopularSection が定番も顔全体に重ねて表示。face/effective_lab が無い時はマスストーン Lab の色見本にフォールバック。
   CI(API test.yml + color-capture tsc)green、v14 プレビュー Space 再デプロイ(orphan push)→ curl で effective_lab 付与&順序不変を確認。
 
+## エポック 18: Kawano AR 版の登場とフロント統合(2026-07-10)
+
+- **Kawano さんから AR 本実装版が届く**: 新リポ **`YK-0204/fibrous-lipstick-ui`**(zip 共有 → GitHub 確認、WRITE 権限あり)。
+  中身は color-capture と共通の v14 ベース(逐次ペア + concierge + 同一 lipDetection IF)から分岐した別系統で、
+  目玉は **リアルタイム動画 AR 試着**(`arRenderer.ts`=WebGL シェーダー / `lipMask.ts` / `useArTryOn.ts` / `ArTryOnStep`)+
+  **❤️/✕ → update_user → 再 recommend のベイズ学習ループ** + KEYROOM デザイン(全画面・スマホ縦)。
+  シェーダーの合成数式は我々の `recolorLips`・設計書 §6 `composite_lip` と**完全一致**(L 偏差保持 + a/b 置換)を確認。
+  検出 3 フレーム間引き + ランドマーク線形補間で 60fps、meanL 定期再計算、デモ静止画モードあり。品質高い。
+- **統合方針(人間承認)**: **Kawano 版を土台**に我々の追加を移植 / プレビューは**併用**
+  (一覧比較 N 件同時=静止画 recolorLips、深掘り試着=AR)。**shortlist(keep/decide)フローは移植しない**
+  (AR の ❤️/✕ が観測送信を担う。extras を AR に足すかは Kawano さんと後日協議)。
+- **実施**: `feat/v14-merge` ブランチで (1) SceneStep(scenes → /v14/pair_compare/start。型は Kawano 版が既に対応・未使用だった)
+  (2) 静止画顔プレビュー(recolorLips/lipPreview/buildFaceCapture 移植、LipCapture 両経路で face 添付、lipDetection 無変更)
+  (3) /v13/popular 接続(lip_lab → effective_lab で定番も顔に重ねる)(4) PC ✓一致チップ (5) tsc CI + .env 注記
+  (**本番 Space に /v14/* と /v13/popular は無い=404 確認。当面 v14 プレビュー Space に向ける**)。
+  CI green → **PR #1**(https://github.com/YK-0204/fibrous-lipstick-ui/pull/1)を Kawano さん宛に作成。main へは自分でマージしない。
+- **リポジトリの正の移動**: フロントの主戦場は color-capture → **fibrous-lipstick-ui** に移行。
+  color-capture の `feat/v14-recommend` は参照用として残す(README に注記)。
+
 ---
 
 ## 残課題(後続のため)

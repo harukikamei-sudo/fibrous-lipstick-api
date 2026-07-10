@@ -3,9 +3,28 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-07-06 — **F3 コンシェルジュ API 化 + 顔全体プレビュー + プレビューデプロイ**
+最終更新: 2026-07-10 — **Kawano AR 版が届き、フロントを fibrous-lipstick-ui に統合(PR #1)**
 
-## 2026-07-04〜06 セッション(F3 API 化 / 顔プレビュー / プレビュー環境)★最新
+## 2026-07-10 セッション(Kawano AR 版 → フロント統合)★最新
+
+**Kawano さんから AR 本実装版が届いた**: 新リポ **`YK-0204/fibrous-lipstick-ui`**(WRITE 権限あり)。
+リアルタイム動画 AR 試着(WebGL シェーダー、合成数式は recolorLips と同一)+ ❤️/✕ ベイズ学習ループ + KEYROOM デザイン。
+詳細評価は LOG エポック 18。
+
+**統合(人間承認済み)**: **Kawano 版を土台**に color-capture feat/v14-recommend の追加分を移植 →
+`feat/v14-merge` ブランチ、CI(tsc)green、**PR #1**: <https://github.com/YK-0204/fibrous-lipstick-ui/pull/1>
+- 移植: SceneStep / 静止画顔プレビュー(recolorLips・一覧比較用。AR とは併用=役割分担)/ /v13/popular(定番も顔に重ねる)/ PC ✓一致 / tsc CI
+- 見送り: shortlist(keep/decide)フロー(AR ❤️/✕ が観測を担う。extras 追加は Kawano さんと後日協議)、Concierge コンポーネント(インライン吹き出しで同等)
+- **⚠️ env**: 本番 Space に `/v14/*`・`/v13/popular` は無い(404)→ フロントの `.env.local` は **v14 プレビュー Space**(`…-api-v14.hf.space`)に向ける。API main マージ後に戻す
+
+**フロントの主戦場は fibrous-lipstick-ui に移行**。color-capture(feat/v14-recommend)は参照用として残置。
+
+**人間/Kawano 待ち**: ① PR #1 のレビュー&マージ(Kawano さん)② ブラウザ通し確認(Haruki・.env を v14 プレビュー Space に)
+③ AR 観測への extras{action,kept,decided} 追加の要否 ④ コンシェルジュ文面3パターン ⑤ API feat/v14 → main マージ計画
+
+---
+
+## 2026-07-04〜06 セッション(F3 API 化 / 顔プレビュー / プレビュー環境)
 
 **前提**: ブランチは前セッションと同じ(API=`feat/v14` / フロント=`feat/v14-recommend`=YK-0204/color-capture)。
 **API 変更のたびに v14 プレビュー Space を再デプロイ**(下記)。全 CI green。
