@@ -25,8 +25,11 @@
 副発見の **spoken_axes 落ちバグ**(/next が session 再構築で毎回 [] に)も修正。テスト6件・CI green・
 プレビュー Space 再デプロイ・ライブ3パターン検証済み。詳細 LOG エポック18。
 
-**人間/Kawano 待ち**: ① PR #1 のレビュー&マージ(Kawano さん)② ブラウザ通し確認(Haruki・.env を v14 プレビュー Space に)
-③ コンシェルジュ文面3パターン ④ API feat/v14 → main マージ計画 ⑤ 決定後の完了演出デザイン(Kawano さん)
+**✅ PR #1 マージ完了(2026-07-13)**: fibrous-lipstick-ui の main に統合済み(feat/v14-merge は削除)。
+以降フロントの正は **main**。Kawano さんの ①アイコン ③AR ズーム調整はまだ未 push。
+
+**人間/Kawano 待ち**: ① ブラウザ通し確認(Haruki・.env.local を v14 プレビュー Space に)
+② コンシェルジュ文面3パターン ③ API feat/v14 → main マージ計画 ④ 決定後の完了演出デザイン(Kawano さん)
 ※ extras{action,kept,decided} は**実装済み**(承認済・❤️/✕/「この色に決める」に付与。LOG エポック18)。
 
 ---
