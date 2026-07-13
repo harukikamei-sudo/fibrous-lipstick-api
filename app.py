@@ -21,6 +21,7 @@ import ipaddress
 import math
 import os
 import socket
+import statistics
 from io import BytesIO
 from typing import Dict, List, Literal, Optional
 from urllib.parse import urlparse
@@ -52,18 +53,30 @@ def _es():
 import bayesian
 import pair_compare as pc_mod
 import recommend_v2 as rec_v2
+import concierge_speech
 from catalog_x20 import load_x20_from_row
 from models_v13 import (
+    ConciergeSpeechRequest,
+    ConciergeSpeechResponse,
     KMTableRow,
     LabValue as LabValueV13,
     PairApplyRequest,
     PairApplyResponse,
     PairInitResponse,
+    PopularItem,
+    PopularResponse,
     RecommendV2Request,
     RecommendV2Response,
     UpdateUserRequest,
     UpdateUserResponse,
+    UserState,
+    V14NextRequest,
+    V14NextResponse,
+    V14Session,
+    V14StartRequest,
+    V14StartResponse,
 )
+import pair_eig
 
 
 # ============ 設定 ============
@@ -751,6 +764,181 @@ def v13_recommend(req: RecommendV2Request):
         explore_weight=req.explore_weight,
     )
     return rec_v2.recommend_v2(full_req)
+
+
+# ============ v14 逐次ペア比較(A3)============
+
+N_PAIRS_V14 = 8  # 固定問数。A4 検証次第で 7 に下げる可能性(動的打ち切りはしない=UX確定仕様)。
+
+
+def _v14_candidate_count(user: UserState, km_table: List[KMTableRow]) -> tuple:
+    """現在の事後での残候補数(competitive set)+ プール総数。recommend_v2 の指標を流用。"""
+    res = rec_v2.recommend_v2(RecommendV2Request(user=user, km_table=km_table, top_n=5))
+    return res.candidate_count, res.catalog_size
+
+
+@app.post("/v14/pair_compare/start", response_model=V14StartResponse)
+def v14_pair_compare_start(req: V14StartRequest):
+    """逐次ペア比較の開始。シーン+PC 事前で初期化し、最初の最大EIGペアを返す。
+
+    session_state(=UserState 相当)はクライアント往復方式(サーバ側に保存しない)。
+    """
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    user = pc_mod.build_seed_user(
+        lip_lab=req.lip_lab, pc_season=req.pc_season, warmness=req.warmness,
+        scenes=req.scenes, mu_thickness=req.mu_thickness,
+    )
+    lip = [req.lip_lab.L, req.lip_lab.a, req.lip_lab.b]
+    km_table = _km_table_for_user(lip, None)
+    row_by_id = {r.product_id: r for r in km_table}
+    best = pair_eig.best_pair(user, pc_mod.PAIR_BANK, [], row_by_id, req.mu_thickness)
+    if best is None:
+        raise HTTPException(status_code=503, detail="ペアバンクが空")
+    first_pair, _eig = best
+    cc_raw, cs = _v14_candidate_count(user, km_table)
+    # ラチェット初期化: 初回は生値がそのまま表示値&floor になる
+    return V14StartResponse(
+        session=V14Session(
+            user=user, asked_pair_ids=[first_pair.pair_id], cc_floor=cc_raw
+        ),
+        n_pairs_total=N_PAIRS_V14,
+        first_pair=pair_eig.pair_v14(first_pair, row_by_id, req.mu_thickness),
+        candidate_count=cc_raw,
+        catalog_size=cs,
+        candidate_count_raw=cc_raw,
+    )
+
+
+@app.post("/v14/pair_compare/next", response_model=V14NextResponse)
+def v14_pair_compare_next(req: V14NextRequest):
+    """選択を観測としてベイズ更新 → 残問あれば次の最大EIGペアを返す。固定 N 問で done。"""
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    pair = {p.pair_id: p for p in pc_mod.PAIR_BANK}.get(req.pair_id)
+    if pair is None:
+        raise HTTPException(status_code=422, detail=f"未知の pair_id: {req.pair_id}")
+
+    user = req.session.user
+    mu_t = user.theta_thickness.mu
+    lip = [user.lip_lab.L, user.lip_lab.a, user.lip_lab.b]
+    km_table = _km_table_for_user(lip, None)
+    row_by_id = {r.product_id: r for r in km_table}
+
+    new_user = pair_eig.apply_v14_choice(user, pair, req.chose, row_by_id, mu_t)
+    snap = pair_eig.theta_snapshot(user, new_user)
+
+    asked = list(req.session.asked_pair_ids)
+    if req.pair_id not in asked:
+        asked.append(req.pair_id)
+
+    done = len(asked) >= N_PAIRS_V14
+    next_pair_payload = None
+    if not done:
+        best = pair_eig.best_pair(new_user, pc_mod.PAIR_BANK, asked, row_by_id, mu_t)
+        if best is None:
+            done = True  # 出せるペアが尽きた(PAIR_BANK 枯渇)
+        else:
+            np_pair, _eig = best
+            asked.append(np_pair.pair_id)  # 二度出さない: 提示時点で asked に積む
+            next_pair_payload = pair_eig.pair_v14(np_pair, row_by_id, mu_t)
+
+    cc_raw, _cs = _v14_candidate_count(new_user, km_table)
+    # 表示ラチェット: competitive set は事後のスナップショットで単調でない(5→6 に増え得る)。
+    # 「絞り込めました」演出と整合するよう表示値は min(過去最小, 今回生値)=単調非増加を保証。
+    # 生値は candidate_count_raw に併載(診断用)。floor は session 相乗り(spoken_axes と同型)。
+    prev_floor = req.session.cc_floor
+    cc_display = cc_raw if prev_floor is None else min(prev_floor, cc_raw)
+    return V14NextResponse(
+        session=V14Session(
+            user=new_user,
+            asked_pair_ids=asked,
+            spoken_axes=req.session.spoken_axes,
+            cc_floor=cc_display,
+        ),
+        done=done,
+        next_pair=next_pair_payload,
+        theta_snapshot=snap,
+        candidate_count=cc_display,
+        candidate_count_raw=cc_raw,
+    )
+
+
+@app.get("/v13/popular", response_model=PopularResponse)
+def v13_popular(
+    top_n: int = 5,
+    lip_l: Optional[float] = None,
+    lip_a: Optional[float] = None,
+    lip_b: Optional[float] = None,
+    mu_thickness: float = 0.5,
+):
+    """ユーザー非依存の「みんなの定番」ランキング(F4-fix #5 / フロントは参照枠として併設)。
+
+    狙い: 診断ごとに動くパーソナライズ結果の隣に「不動の共通基準」を置き、自分の結果が
+    極端に浮いていないかをユーザー自身が確認できるようにする(MTG 合意)。
+
+    代表性(representativeness)の算出 — MVP は売上/レビューが無いため**カタログ代表性で代用**:
+      代表性 = カタログ中央 Lab(各成分の median = centroid)への **Euclidean 距離が小さいほど高い**。
+      = 「カタログの真ん中にいる=多くの人に汎用的に使える色」という近似。
+      本番では売上数・レビュー数・在庫回転などに差し替える前提(この近似は暫定)。
+    決定的: 同点は product_id 昇順。ユーザー状態に一切依存しない静的ランキング。
+    """
+    if not CATALOG:
+        raise HTTPException(status_code=503, detail="商品カタログが未ロード")
+    top_n = max(1, min(top_n, len(CATALOG)))
+    ls = [p["lab"][0] for p in CATALOG]
+    as_ = [p["lab"][1] for p in CATALOG]
+    bs = [p["lab"][2] for p in CATALOG]
+    cen = (statistics.median(ls), statistics.median(as_), statistics.median(bs))
+
+    def _dist(lab) -> float:
+        return math.sqrt((lab[0] - cen[0]) ** 2 + (lab[1] - cen[1]) ** 2 + (lab[2] - cen[2]) ** 2)
+
+    scored = sorted(((_dist(p["lab"]), p["id"], p) for p in CATALOG), key=lambda t: (t[0], t[1]))
+    d_max = max((d for d, _, _ in scored), default=1.0) or 1.0
+
+    # lip_lab を渡された場合のみ、TOP-N 各商品の K-M 塗布後 Lab(effective_lab)を計算。
+    # 本人の唇に重ねるプレビュー用。ランキング自体はユーザー非依存のまま(effective は付加情報)。
+    want_eff = lip_l is not None and lip_a is not None and lip_b is not None
+    lip = [lip_l, lip_a, lip_b] if want_eff else None
+    mu_t = max(0.0, min(1.0, mu_thickness))
+
+    def _eff(p) -> Optional[LabValueV13]:
+        if not want_eff:
+            return None
+        ks = km.ks_from_lab(p["lab"])
+        s, _ = km.resolve_line_s(line_id=p["line_id"], line_category=p["line_category"])
+        a = km.compute_applied_lab(lip, ks, s, mu_t)  # mu_thickness で直接塗布後 Lab
+        return LabValueV13(L=float(a[0]), a=float(a[1]), b=float(a[2]))
+
+    results = [
+        PopularItem(
+            product_id=p["id"],
+            name=p["name"],
+            line_category=p["line_category"] or "tint",
+            image_url=p["image_url"],
+            lab=LabValueV13(L=p["lab"][0], a=p["lab"][1], b=p["lab"][2]),
+            representativeness=round(1.0 - d / d_max, 4),
+            effective_lab=_eff(p),
+        )
+        for d, _, p in scored[:top_n]
+    ]
+    return PopularResponse(
+        catalog_size=len(CATALOG),
+        method="centroid_distance(median Lab); MVP 代用(本番は売上/レビューに差し替え)",
+        results=results,
+    )
+
+
+@app.post("/v14/concierge_speech", response_model=ConciergeSpeechResponse)
+def v14_concierge_speech(req: ConciergeSpeechRequest):
+    """コンシェルジュ(妖精)の発話を生成(F3 を API 化・RN/Next の二重実装回避)。
+
+    既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。
+    発話ロジックは `concierge_speech.py`(conciergeScript.ts の忠実移植)。
+    explore は session を往復(中間実況の重複/予算は session.spoken_axes に相乗り)。
+    """
+    return concierge_speech.generate(req)
 
 
 def _interpret_match_rate(r: float) -> str:

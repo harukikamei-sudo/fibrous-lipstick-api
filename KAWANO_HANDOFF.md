@@ -265,13 +265,17 @@
 - 商品の組み合わせ・提示順は Kawanoさん UI のフロー次第で差し替えたい
 - 提案の組み合わせを見て要望を言ってほしい
 
-### Q4. x_20 軸定義 ⭐⭐ 最重要(精度のボトルネック)
-- 仮定義 20 軸: pigmentation / vivid / transparency / glossiness / matte_finish /
+### Q4. x_20 軸定義 ⭐⭐ → ✅ **確定済み(下記「仮定義」は廃止。正は `catalog_x20.py`)**
+- **正は `catalog_x20.AXIS_NAMES`(v1.3 確定・変更は要協議)**: hue / saturation /
+  brightness / pigmentation / glossy / moisture_finish / sheer / velvet / blur /
+  is_tint / is_balm / is_gloss / moisturizing / longlasting / transfer_resistance /
+  girly / makeup_intensity / konare / sweetness / korean
+- **AR の「印象タグ」はコンシェルジュ発話(reasons)に吸収**(独立タグ UI は作らない。agenda §3)。
+  matte / juicy / mature 系は実装に1対1の軸が無く、当面は不要の見込み。
+- ~~仮定義 20 軸(廃止): pigmentation / vivid / transparency / glossiness / matte_finish /
   velvet_finish / moisture / durability / blur_effect / juicy_feel /
   cool_tone / warm_tone / light_color / deep_color / everyday_use /
-  girly / konare / sweetness / korean / mature
-- Kawanoさん が AR で見せたい「印象タグ」と整合させたい
-- ここを合わせると推薦精度が一気に上がる
+  girly / konare / sweetness / korean / mature~~
 
 ### Q5. 観測ログの拡張余地
 - 今の Observation スキーマで足りない情報ある?
@@ -350,11 +354,17 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/pair_compare/appl
 
 ## 10. 関連ドキュメント
 
+- **[KAWANO_V14_REVIEW.md](KAWANO_V14_REVIEW.md)** ★最新 — v14 協議用1枚(報告/確認/一緒に決める/お願い・15分)
+- **[KAWANO_PAIRS_NOTE.md](KAWANO_PAIRS_NOTE.md)** — 色ペアを変えない判断の根拠(collapse 調査)
 - **[SIMULATOR_GUIDE.md](SIMULATOR_GUIDE.md)** — 個人化が動く証拠(CLI 取説 + 数式)
-- **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** — API spec の技術詳細(curl 例・全フィールド説明)
-- **[HANDOFF.md](HANDOFF.md)** — 全体引き継ぎ(状態・履歴)
+- **[KAWANO_INTERFACE.md](KAWANO_INTERFACE.md)** — API spec の技術詳細(§4.7 に v14 追加分)
+- **[HANDOFF.md](HANDOFF.md)** — 全体引き継ぎ(冒頭が v14 最新状態)
 - **[DESIGN.md](DESIGN.md)** — 元の設計理論(K-M 数式・色彩学根拠)
-- **[LOG.md](LOG.md)** — 開発ログ(意思決定の理由)
+- **[LOG.md](LOG.md)** — 開発ログ(意思決定の理由・エポック16 が v14)
+
+> **v14(推薦体験改修)が一段落**。協議は `KAWANO_V14_REVIEW.md` を司会に。下記 §3 の握手は
+> `/v14/pair_compare/{start,next}`(逐次)と `/v13/popular`(みんなの定番。任意 lip_lab で各定番に
+> `effective_lab` が付き、定番も本人の唇に合成して顔プレビュー可)が増えた(詳細 KAWANO_INTERFACE §4.6/4.7)。
 
 ---
 

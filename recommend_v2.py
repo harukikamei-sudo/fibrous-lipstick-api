@@ -18,14 +18,20 @@
 from __future__ import annotations
 
 import math
-from typing import List, Sequence
+from typing import Dict, List, Sequence
 
 import numpy as np
 from skimage import color as skcolor
 
+import scene_priors
+from catalog_x20 import AXIS_LABELS_JA, AXIS_NAMES
+from constants import TAU2_PREF
 from models_v13 import (
     KMTableRow,
     LabValue,
+    ProductTrait,
+    ReasonAxis,
+    RecommendReasons,
     RecommendV2Item,
     RecommendV2Request,
     RecommendV2Response,
@@ -125,6 +131,168 @@ def beta_from_explore(mu_explore: float, beta_max: float) -> float:
     return beta_max * max(0.0, min(1.0, mu_explore))
 
 
+# ============ A2: 推薦理由(reasons)の構築 ============
+# RHO: top_axes は「事後分散 var ≤ RHO·TAU2_PREF の確信ある軸」だけ喋る。
+# ※ フロント F3(conciergeScript.ts)の発話トリガー RHO と同値を共有すること
+#   (型生成に乗らないので .env / 定数ファイルで同期し、参照先をコメントで明記)。
+RHO_CONFIDENT = 0.5
+# is_系バイナリ形態軸と、それに相関する連続軸(共線性)。表示のタイブレークにのみ使う。
+IS_BINARY_AXES = {"is_tint", "is_balm", "is_gloss"}
+CONTINUOUS_PROXY = {"is_gloss": "glossy", "is_tint": "longlasting", "is_balm": "moisturizing"}
+TIEBREAK_MARGIN = 0.20   # 拮抗判定(差が20%以内なら連続軸を優先表示)。スコアには無影響。
+
+# I_dialog(familiarity 第1項・A1): 選択シーンが言及する軸で商品 x20 がこの値超なら
+# 「対話で好み明言」相当として dialog_named=True。{要決定} 初期値 0.5。
+DIALOG_X20_THRESHOLD = 0.5
+
+
+def _scene_mentioned_indices(scenes) -> frozenset:
+    """選択シーンが言及する x20 軸のインデックス集合(I_dialog 用)。"""
+    if not scenes:
+        return frozenset()
+    axes = scene_priors.scene_mentioned_axes(list(scenes))
+    return frozenset(AXIS_NAMES.index(a) for a in axes if a in AXIS_NAMES)
+
+
+def _scene_match(x20: Sequence[float], mentioned_idx: frozenset) -> bool:
+    """選択シーン言及軸のうち、商品 x20 が閾値超の軸が1つ以上あれば True。"""
+    return any(x20[k] > DIALOG_X20_THRESHOLD for k in mentioned_idx)
+
+# candidate_count(A2-fix・competitive set 方式)。
+# ※ 当初 fix の「R_final>プール中央値の個数」は中央値分割が常に≈N/2で観測が進んでも減らず、
+#   「145→…→5」の絞り込み演出に使えないため破棄。TOP-N 最下位スコアから margin·(1位−N位)
+#   以内にいる候補数(事後が尖るほど分離して減る)に置換(A4 ハーネスで単調性を検証・調整)。
+MARGIN_COMPETITIVE = 0.15
+
+
+def _competitive_count(
+    r_finals_desc: Sequence[float], top_n: int, margin: float = MARGIN_COMPETITIVE
+) -> int:
+    """残候補数 = TOP-N 最下位スコアから margin·(1位−N位)以内にいる候補の数。
+
+    threshold = score[N位] − margin·(score[1位] − score[N位]),  count = #{R_final ≥ threshold}。
+    序盤(事後 flat)はスコアが団子で多く、観測が進み事後が尖ると分離して減る。
+    退化(スプレッド≈0=全同値/TOP-N団子)時は TOP-N 件数にフォールバック。
+    """
+    n = len(r_finals_desc)
+    if n == 0:
+        return 0
+    k = min(top_n, n)
+    s_top, s_bot = r_finals_desc[0], r_finals_desc[k - 1]
+    spread = s_top - s_bot
+    if spread <= 1e-9:
+        return k  # 退化 → TOP-N フォールバック
+    threshold = s_bot - margin * spread
+    return sum(1 for s in r_finals_desc if s >= threshold)
+
+
+def _percentile_high_good(values: Sequence[float], x: float) -> float:
+    """x が values 内でどれだけ上位か(高い値=高パーセンタイル、[0,1])。
+
+    タイは中間順位、要素1件は 1.0。絶対閾値を持たない「順位率」
+    (_flag_serendipity と同じ自己校正の哲学)。
+    """
+    n = len(values)
+    if n <= 1:
+        return 1.0
+    less = sum(1 for v in values if v < x)
+    equal = sum(1 for v in values if v == x)
+    return (less + 0.5 * (equal - 1)) / (n - 1)
+
+
+def _top_axes_with_tiebreak(eligible: List[tuple]) -> List[tuple]:
+    """eligible=[(axis, contribution)](contribution 降順)に共線性タイブレークを適用。
+
+    is_系バイナリ軸とその連続プロキシ(is_gloss↔glossy 等)の寄与が TIEBREAK_MARGIN
+    以内で拮抗するとき、表示は連続軸を優先する(Mina に伝わるのは形態名より質感の言葉)。
+    これは表示選択の規則でありスコア計算には一切影響しない。
+    """
+    contrib_by_axis = dict(eligible)
+    out: List[tuple] = []
+    used: set = set()
+    for axis, c in eligible:
+        if axis in used:
+            continue
+        proxy = CONTINUOUS_PROXY.get(axis)
+        if proxy is not None and proxy not in used and proxy in contrib_by_axis:
+            pc = contrib_by_axis[proxy]
+            denom = max(abs(c), abs(pc), 1e-9)
+            if abs(c - pc) / denom <= TIEBREAK_MARGIN:
+                out.append((proxy, pc))
+                used.add(proxy)
+                used.add(axis)
+                continue
+        out.append((axis, c))
+        used.add(axis)
+    return out
+
+
+def _build_reasons(
+    x20: Sequence[float], mu_pref: Sequence[float], pref_var: Sequence[float],
+    dE: float, pref_contrib: float,
+    pool_dEs: Sequence[float], pool_pref_contribs: Sequence[float],
+    pref_evidence: Dict[str, List[str]], scene_match: bool,
+) -> RecommendReasons:
+    """1商品分の reasons を構築(数値・ラベル・来歴のみ。文章化はフロント)。"""
+    color_pct = _percentile_high_good([-d for d in pool_dEs], -dE)
+    pref_pct = _percentile_high_good(pool_pref_contribs, pref_contrib)
+
+    # top_axes: 正寄与かつ確信のある軸のみ。共線性タイブレークを適用して最大2。
+    eligible = [
+        (AXIS_NAMES[k], mu_pref[k] * x20[k])
+        for k in range(20)
+        if mu_pref[k] * x20[k] > 0 and pref_var[k] <= RHO_CONFIDENT * TAU2_PREF
+    ]
+    eligible.sort(key=lambda t: (-t[1], t[0]))
+    top_axes = [
+        ReasonAxis(axis=a, label=AXIS_LABELS_JA[a], contribution=round(c, 4),
+                   evidence=list(pref_evidence.get(a, []))[:2])
+        for a, c in _top_axes_with_tiebreak(eligible)[:2]
+    ]
+
+    # product_traits: 商品側で値が突出した軸。is_系除く・top_axes と重複除く。最大2。
+    chosen = {ra.axis for ra in top_axes}
+    traits = [
+        (AXIS_NAMES[k], x20[k])
+        for k in range(20)
+        if AXIS_NAMES[k] not in IS_BINARY_AXES and AXIS_NAMES[k] not in chosen and x20[k] > 0
+    ]
+    traits.sort(key=lambda t: (-t[1], t[0]))
+    product_traits = [ProductTrait(axis=a, label=AXIS_LABELS_JA[a]) for a, _ in traits[:2]]
+
+    return RecommendReasons(
+        color_percentile=round(color_pct, 4),
+        pref_percentile=round(pref_pct, 4),
+        scene_match=scene_match,  # A1: 選択シーン言及軸で商品 x20 が閾値超か
+        top_axes=top_axes,
+        product_traits=product_traits,
+    )
+
+
+def _attach_reasons(
+    top: List[RecommendV2Item], req: RecommendV2Request, all_items: List[RecommendV2Item],
+    mu_pref: Sequence[float], pref_var: Sequence[float], beta: float,
+    pref_evidence: Dict[str, List[str]], mentioned_idx: frozenset,
+) -> None:
+    """返却 TOP-N に reasons を付与。パーセンタイルは候補プール(全 km_table)基準。"""
+    w2 = req.familiarity_weights[1]
+    x20_by_id = {row.product_id: list(row.x20) for row in req.km_table}
+
+    def _pref_contrib(it: RecommendV2Item) -> float:
+        # pref_contrib = μ_pref·x20 − β·w2·cos(μ_pref, x20)(意味での再グルーピング)
+        return it.pref_match - beta * w2 * cosine_similarity(mu_pref, x20_by_id[it.product_id])
+
+    pool_dEs = [it.delta_e_to_color for it in all_items]
+    pool_pref_contribs = [_pref_contrib(it) for it in all_items]
+    for it in top:
+        x20 = x20_by_id[it.product_id]
+        it.reasons = _build_reasons(
+            x20, mu_pref, pref_var,
+            it.delta_e_to_color, _pref_contrib(it), pool_dEs, pool_pref_contribs,
+            pref_evidence, _scene_match(x20, mentioned_idx),
+        )
+
+
 # ============ 推奨本体 ============
 
 def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
@@ -134,6 +302,8 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
     mu_pref = user.theta_pref.mu
     mu_explore = user.theta_explore.mu
     beta = beta_from_explore(mu_explore, req.beta_max)
+    # I_dialog(A1): 選択シーンが言及する軸のインデックス集合(scenes 未指定なら空=従来挙動)
+    mentioned_idx = _scene_mentioned_indices(user.scenes)
 
     items: List[RecommendV2Item] = []
     for row in req.km_table:
@@ -141,7 +311,7 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
         f, dE, pref_match = f_score(eff, mu_color, mu_pref, row.x20, req.alpha)
         fam = familiarity(
             eff, mu_color, mu_pref, row.x20, req.familiarity_weights,
-            dialog_named=False,
+            dialog_named=_scene_match(row.x20, mentioned_idx),
         )
         r_final = f - beta * fam
         items.append(RecommendV2Item(
@@ -158,18 +328,28 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
             image_url=row.image_url,
         ))
 
-    items.sort(key=lambda it: it.r_final, reverse=True)
+    # 決定性(A2-fix): 同点は商品ID昇順で安定化(同一入力 → 同一 TOP-N を保証)。
+    items.sort(key=lambda it: (-it.r_final, it.product_id))
+
+    # 残候補数(A2-fix・competitive set)+ プール総数。表示専用で TOP-N 選定には不使用。
+    pref_evidence = user.pref_evidence or {}
+    candidate_count = _competitive_count([it.r_final for it in items], req.top_n)
+    catalog_size = len(req.km_table)
 
     if not req.rerank:
         # ===== 従来パス(完全後方互換): R_final 降順 =====
         top = items[: req.top_n]
         _flag_serendipity(top)
+        _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta,
+                    pref_evidence, mentioned_idx)
         return RecommendV2Response(
             user_id=user.user_id,
             mu_thickness=mu_thickness,
             beta_used=beta,
             reranked_by_eig=False,
             used_explore_weight=None,
+            candidate_count=candidate_count,
+            catalog_size=catalog_size,
             results=top,
         )
 
@@ -196,12 +376,16 @@ def recommend_v2(req: RecommendV2Request) -> RecommendV2Response:
 
     top = reranked[: req.top_n]
     _flag_serendipity(top)
+    _attach_reasons(top, req, items, mu_pref, user.theta_pref.var, beta,
+                    pref_evidence, mentioned_idx)
     return RecommendV2Response(
         user_id=user.user_id,
         mu_thickness=mu_thickness,
         beta_used=beta,
         reranked_by_eig=True,
         used_explore_weight=max(0.0, min(1.0, w)),
+        candidate_count=candidate_count,
+        catalog_size=catalog_size,
         results=top,
     )
 

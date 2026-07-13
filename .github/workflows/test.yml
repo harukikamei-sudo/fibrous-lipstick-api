@@ -44,11 +44,68 @@ jobs:
       - name: Run test_bayesian.py
         run: python test_bayesian.py
 
+      - name: Run test_scene_priors.py
+        run: python test_scene_priors.py
+
       - name: Run test_recommend_v2.py
         run: python test_recommend_v2.py
+
+      - name: Run test_concierge_speech.py
+        run: python test_concierge_speech.py
 
       - name: Run test_v13_endpoints.py
         run: python test_v13_endpoints.py
 
       - name: Run test_v13_flow.py (E2E)
         run: python test_v13_flow.py
+
+      - name: Run test_v14_flow.py (E2E)
+        run: python test_v14_flow.py
+
+  # A4 検証ハーネス(分析。ローカルは skimage の Gatekeeper ハングで動かないため CI で実行)。
+  # workflow_dispatch 限定。canonical な定義は a4.yml(main マージ後に単独 dispatch 可)。
+  a4:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install system deps (libGL + 日本語フォント Noto CJK)
+        run: sudo apt-get update -y && sudo apt-get install -y libgl1 fonts-noto-cjk
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install matplotlib
+      - name: Regenerate openapi.json (app.openapi() / ローカルは skimage でハングのため CI)
+        run: |
+          python - <<'PY'
+          import json
+          from app import app
+          spec = app.openapi()
+          with open("openapi.json", "w", encoding="utf-8") as f:
+              json.dump(spec, f, ensure_ascii=False, indent=2)
+          paths = sorted(spec.get("paths", {}))
+          print(f"openapi paths ({len(paths)}):")
+          for p in paths:
+              print(" ", p)
+          assert "/v14/pair_compare/start" in paths, "v14 が openapi に無い"
+          assert "/v13/popular" in paths, "popular が openapi に無い"
+          PY
+      - name: Run A4 validation harness
+        run: python scripts/figures/make_a4_validation.py
+      - name: Generate Kawano figures (協議用 PNG)
+        run: python scripts/figures/make_kawano_figures.py
+      - name: Upload figures + openapi.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a4-figures
+          path: |
+            docs/figures/a4_*.png
+            scripts/figures/kawano_*.png
+            openapi.json
+          if-no-files-found: warn

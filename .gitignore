@@ -34,3 +34,5 @@ hf_streamlit_space/
 bayes_report.png
 bayes_convergence.png
 bayes_eig.png
+.vercel
+.env*.local

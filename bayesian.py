@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Sequence, Tuple
 
+from catalog_x20 import AXIS_NAMES
 from models_v13 import (
     GaussianLab,
     GaussianScalar,
@@ -221,6 +222,41 @@ def update_theta_explore(
     return GaussianScalar(mu=mu_n, var=var_n), len(relevant)
 
 
+# ============ θ_pref 来歴(evidence・A2)============
+
+def compute_pref_evidence(
+    observations: Sequence[Observation], top_k: int = 2
+) -> Dict[str, List[str]]:
+    """θ_pref 各軸の事後分散を最も縮めた観測の pair_id を {軸名: [pair_id,...]} で返す。
+
+    分散縮小は精度寄与 x_{o,j}² / σ²_o(= update_theta_pref の precision 加算項)で決まる。
+    **更新式は変えず**、その寄与が大きい順に observation.source_pair_id を拾うだけ。
+    source_pair_id / observed_x20 を持つ観測(=ペア比較由来)のみ対象。
+    """
+    relevant = [
+        o for o in observations
+        if o.observed_x20 is not None and o.source_pair_id is not None
+    ]
+    if not relevant:
+        return {}
+    evidence: Dict[str, List[str]] = {}
+    for j, axis in enumerate(AXIS_NAMES):
+        best: Dict[str, float] = {}
+        for o in relevant:
+            xj = o.observed_x20[j]
+            contrib = (xj * xj) / _sigma2(o.source)   # 精度寄与=分散縮小量
+            if contrib <= 0:
+                continue
+            if o.source_pair_id not in best or contrib > best[o.source_pair_id]:
+                best[o.source_pair_id] = contrib
+        if not best:
+            continue
+        # 寄与降順、同寄与は pair_id 昇順で安定化 → 上位 top_k
+        ranked = sorted(best.items(), key=lambda kv: (-kv[1], kv[0]))
+        evidence[axis] = [pid for pid, _ in ranked[:top_k]]
+    return evidence
+
+
 # ============ 統合: 全 θ をバッチ更新 ============
 
 def apply_observations(
@@ -233,6 +269,8 @@ def apply_observations(
     thick_post, n_thick = update_theta_thickness(user.theta_thickness, observations)
     explore_post, n_explore = update_theta_explore(user.theta_explore, observations)
 
+    # θ_pref 来歴: この観測バッチがペア由来なら再構築、そうでなければ既存を保持。
+    ev = compute_pref_evidence(observations)
     new_user = UserState(
         user_id=user.user_id,
         lip_lab=user.lip_lab,
@@ -241,6 +279,7 @@ def apply_observations(
         theta_pref=pref_post,
         theta_explore=explore_post,
         theta_thickness=thick_post,
+        pref_evidence=ev if ev else user.pref_evidence,
     )
     n_applied = {
         "theta_color": n_color,

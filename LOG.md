@@ -861,8 +861,538 @@ v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦�
 
 ---
 
+## エポック 15: v14 推薦体験改修(A1〜A5 / 2026-06-15、ブランチ feat/v14)
+
+### 背景
+発表 FB「精度の数字より Mina が納得して買えるか」→ 推薦体験(シーン質問〜ペア比較〜
+推薦表示〜購入)の改修(`cc_prompts_v14.md` + `agenda_v14.md`)。API は Haruki、撮影/AR は Kawano。
+**v13 系は完全温存し追加・新設のみ**(Kawano の既存フロントを壊さない)。全コミット CI(Linux)green。
+
+### A5(API半): OpenAPI → TypeScript 型自動生成(`cda99d8`)
+- `scripts/export_openapi.py`(`app.openapi()` 直ダンプ、sort_keys 安定出力)→ `openapi.json`。
+- フロントは `openapi-typescript` で `apiTypes.gen.ts` 生成(color-capture 側、後述)。手書き
+  `apiTypes.ts` との乖離リスクを断つ。完全置換は F2/F4。
+
+### A2 + A2-fix + evidence: reasons / candidate_count / 来歴(`878a6e9`, `45856ab`)
+- **reasons**(推薦理由の構造化・文章化はフロント): color/pref percentile(候補プール内の順位率=
+  絶対閾値なし)、top_axes(μ_pref·x20>0 かつ var≤RHO·TAU2[RHO=0.5]、is_系↔連続軸の共線性は
+  連続軸を優先表示=表示規則のみスコア無影響)、product_traits、`AXIS_LABELS_JA`。
+- **決定性**(A2-fix): 安定ソート `(-r_final, product_id)` + next_best 同点タイブレーク。
+- **candidate_count**(A2-fix): ★当初 fix 定義「R_final>プール中央値の個数」は**中央値分割が常に
+  ≈N/2 で観測が進んでも減らない**ため破棄。**competitive set 方式**に読み替え:
+  `threshold = score[N位] − margin·(1位−N位)`(margin=0.15)、`count = #{R_final≥threshold}`。
+  退化時は TOP-N。事後が尖るほど減る。`CATALOG_SIZE` も返す。**文書と実装の食い違い(§Q4 事件)
+  再発防止のためコミット/モデル/コメントに読み替えを明記**。
+- **evidence**(来歴): `UserState.pref_evidence`(軸名→pair_id)+ `Observation.source_pair_id`。
+  `bayesian.compute_pref_evidence` が精度寄与 x²/σ² 大の pair_id を記録(更新式は不変)。
+  reasons.top_axes.evidence に充填。保持先は UserState(v13/v14 両対応・往復設計に乗る)。
+
+### A1: シーン事前 + I_dialog + x20軸確定(`3388205`)
+- `PairApplyRequest.scenes` / `UserState.scenes` 追加(未指定なら従来挙動=完全後方互換)。
+- `scene_priors.build_pref_prior(scenes)` で θ_pref 事前を構築(flat → シーン依存)。SCENE_MU_PREF は
+  Haruki が設計した完成版(20軸×4シーン・符号衝突ルール)を**そのまま採用・再設計せず**配置。
+- **`constants.py` を新設し TAU2_PREF を一元化**(pair_compare ⇄ scene_priors の循環 import 回避)。
+- **I_dialog**(familiarity 第1項): 選択シーン言及軸で商品 x20>0.5 なら dialog_named=True →
+  reasons.scene_match も実値化。閾値 `DIALOG_X20_THRESHOLD=0.5`。
+- **x20 軸定義を確定宣言**(catalog_x20 docstring / KAWANO_INTERFACE / KAWANO_HANDOFF §Q4 の
+  仮20軸=transparency/mature 等を廃止、正は `catalog_x20.AXIS_NAMES`)。AR 印象タグはコンシェルジュ
+  発話に吸収(独立タグ UI は作らない)。
+
+### A3: v14 逐次ペア比較(最大EIG・effective_lab)(`2957eb4`)
+- `/v13` 完全温存し `/v14/pair_compare/start`・`next` 新設。固定 N=8 問・逐次・最大EIG選択
+  (動的打ち切りなし=進捗バー終端を見せる UX 確定仕様)。session はクライアント往復。
+- **EIG_pair = Σ_c P(c)·KL(q_c‖q)**(期待KL形・ガウス閉形式 = 相互情報量 I(choice;θ))。
+  `q_c` は `bayesian.apply_observations` と**同一経路**(更新と EIG の完全整合・サンプリング不要)。
+  KL は θ_color(3)+θ_pref(20)和。期待KL は H(prior)−E[H(post)] に厳密一致。
+- **選択確率 P(c) = Bradley-Terry** `σ(β_BT·(fit差))`。β_BT=`active_learning.SLOPE_DEFAULT`(0.25)
+  流用。de50 は2側の差で相殺。観測ノイズは実更新と同じペア σ²(色 `pair_color≈20.83`/世界観0.8)。
+- **ラプラス不使用(案1)**: 更新=厳密ガウス共役、選択確率=事後平均で1点プラグイン。案2(BT尤度+
+  ラプラス、ヘッセ `β_BT²·p(1−p)·∇z∇zᵀ`)は Phase 2 の精度詰め用に温存。
+- **v14 は観測とモデル整合のため色ペアの観測 Lab に effective_lab(lip+μ_thickness の K-M)を使用**
+  (v13 の .lab マスストーンではなく)。フロントはこれで本人の唇を再着色。
+- `best_pair` は EIG最大・**同点 pair_id 昇順で決定的**・**同一ペアは二度出さない**(asked 追跡)。
+- 正直な非一貫(観測が違うことに起因・意図的): 単体EIG=絶対like(de50あり・dislike非更新)、
+  ペア=相対選択(de50消える・両枝更新)。KL機構は共有、確率モデルと σ² 値だけ別。`pair_eig.py`。
+
+### 検証運用の知見(重要)
+- **macOS Gatekeeper の .so 初回スキャンが、並行/連続の重プロセス(skimage/scipy import、
+  TestClient、tsc)で停止(CPU≈0)する**。ローカルでテストが完走しない事象が頻発 → **CI(クリーン
+  Linux)で検証する運用に切り替え**(`gh workflow run test.yml --ref feat/v14`)。純ロジック(skimage
+  非依存: bayesian/scene_priors)はローカルでも可。コード起因でなく環境問題と切り分け済み。
+- テスト数: bayesian 11 / recommend_v2 22 / active_learning 8 / scene_priors 5 / v13_endpoints /
+  v13_flow / v14_flow 4 / 物理系(km/lab)。CI に scene_priors・v14_flow を追加。
+
+### 未確定(A4 で確定予定)
+- **C(EIG の σ²: 色ペアに pair_color≈20.83)/ D(β_BT=0.25)** は承認済みだが、**色ペアの色KLが
+  小さく出るため色 vs 世界観ペアの EIG スケールが偏らないか** を A4 で必ず検証 → 偏れば C の値か
+  正規化、D の β_BT を見直す。`N_PAIRS=8` も A4 次第で 7 に下げる可能性。
+
+### フロント(color-capture / feat/v14-recommend、push 済)
+- **A5フロント半**(`f1886e4`): `openapi-typescript` 導入 + `apiTypes.gen.ts` 生成 + 手書きとの差分
+  レポート(手書きは v14 型を欠き命名もズレ。F2/F4 で移行)。
+- **F1**(`5c91c5e`): シーン選択ステップ `SceneStep`(4択・複数選択、scene_priors.SCENE_LABELS と
+  同一文字列)を intro→capture_wrist 間に挿入。session に scenes 追加(末尾追記=マージ面積最小)。
+- **F2**(2026-06-27): `recolorLips(pixels, mask, targetLab, options)` を `color.ts` に純関数で追加
+  (a/b 置換 + L 偏差保持=陰影/しわ温存、入力非破壊)。`labToRgb`(rgbToLab の逆)を color.ts に集約し
+  `colorPreview.labToHex` を再利用化(Lab→sRGB 重複解消)。`lipDetection.ts` は不変。Kawano の AR
+  本実装統合までの簡易レンダラ・コンポーネント非依存。※ プレビューの完全配線(マスク plumbing)は
+  PairCompareStep v14(F2本体)で行う。SampleResult は cropDataUrl のみ保持・mask 未保持のため。
+- **F2本体**(2026-06-27): `PairCompareStep` を v13 一括(init/apply)から **v14 逐次(start→next×N)** に
+  書き換え。各ペアを**本人の唇クロップに `recolorLips` で再着色**して左右プレビュー表示(マスクは
+  a* 中央値ヒューリスティック=本マスク未保持のため簡易。Kawano AR で置換予定)。progress は API の
+  `n_pairs_total` 基準。`done` で `session.user` を UserState として確定 → recommend へ。next 失敗は選択保持で
+  リトライ。session に `thetaSnapshot/candidateCount/catalogSize` を末尾追記。apiClient に v14 メソッド、
+  apiTypes.ts に v14 型を**手書き**追加(`openapi.json` が 6/15=A3 の /v14 追加前で陳腐化 → 再生成は
+  app import=skimage でローカルハング。**openapi.json 再生成は CI or 実ターミナルで別途要**)。
+- **F3**(2026-06-27): Concierge scaffold。`conciergeScript.ts`(テンプレート方式・LLM不使用)に
+  3フェーズ選択ロジック `selectSpeech(ctx)` + step_intro/axis_realization/reason_*/serendipity/
+  decision の器 + 仮テキスト(文面は Kawano 3パターン待ち=全 TODO)。`Concierge.tsx`(フローティング
+  吹き出し + プレースホルダ妖精アバター + 同一軸二度言わない/予算最大3の管理)を page.tsx に全ステップ
+  共通マウント。`CONCIERGE_RHO=0.5` を API `recommend_v2.RHO_CONFIDENT` と同期(コメントで出どころ明記)。
+- **F4-fix**(2026-06-28): `RecommendStep` を購入フローに再設計。唇プレビュー TOP-5(recolorLips)・
+  **生スコア非表示**(reasons チップ + Concierge 理由に置換)・絞り込みカウンタ(candidate_count)・
+  shortlist(詳細→キープ2〜3→本人の唇で横並び比較→1本決定→決定カード[軌跡+購入リンク])・
+  観測送信(閲覧/キープ/決定を ar_view_like で fire-and-forget、**表示中 TOP-5 は再ランクしない**)・
+  `/v13/popular` を「みんなの定番」参照枠として控えめ併設。アンカー4+回転1/スライダー/ε は全廃方針どおり不採用。
+  `lipPreview.ts` に renderLipPreview を切り出し PairCompareStep と共用。apiTypes に reasons/Popular 型。
+  - ⚠️ **要確認(F4-fix #4)**: 観測スキーマに kept/decided の明示フィールドが無い。当面 ar_view_like で
+    送信しているが、`Observation.extras:{kept?,decided?}` の追加可否を確認したい(追加なら API 側 models 修正)。
+  - ⚠️ ローカル tsc/lint は Gatekeeper ハングで不可 → 手動レビューで確定。**実ターミナルで `npm run build`/`tsc` 推奨**。
+- **F4-fix(旧メモ)**: 当初は依存(下記)で後続予定だった。F2本体完了 + /v13/popular 新設で前提が揃い実装。
+  旧理由=(1) TOP-5 唇プレビューと「145→…→5」の
+  絞り込みカウンタの**漸減演出は v14 ペアフロー(F2本体=PairCompareStep)が前提**、(2) #5 全体ランキングは
+  API `/v13/popular` が**未実装**(A2 新設予定が欠落)、(3) 色別 x20 補正の人間判断(下記)がプレビュー色に
+  影響し得る。アンカー4+回転1/スライダー/デッドバンドεは全廃方針(現 RecommendStep に未導入なので
+  「廃止」は実質達成済み)。
+
+> ⚠️ ローカル検証不可: color-capture の `tsc --noEmit` / `next lint` は本セッションの sandbox で
+> Gatekeeper の .so/バイナリ コールド起動ハングにより実行できず(API の skimage と同根)。F2/F3 の TS は
+> 手動レビューで確定。**実ターミナルで `npm run lint` / `npx tsc --noEmit` の実行を推奨**。
+
+---
+
+## エポック 16: A4 検証(C/D 確定 + アルゴリズム・ブラッシュアップ所見)(2026-06-27)
+
+A3(逐次 EIG ペア比較)承認時の条件「**A4 で色ペア vs 世界観ペアの EIG スケール均衡と、
+7-8 問 ≈ flat+10 問の収束を検証し、結果を見て C/D を確定する**」に応えるため、
+`scripts/figures/make_a4_validation.py` で本番ロジック(pair_eig / scene_priors /
+bayesian / recommend_v2)を実際に呼ぶ in-silico 検証を実施。**ローカルは skimage の
+Gatekeeper ハングで動かない**ため、CI(`test.yml` の workflow_dispatch 限定 `a4` ジョブ、
+clean Linux)で回しログから数値を読む方式に確立。3 ペルソナ(mina=韓国系鮮やかティント /
+aya=シアー明るめ / yuki=マット暗め)を matching 集合の平均で「真の好み」とし、
+オラクル選択(真の好みに近い側を決定的に選ぶ)で逐次シミュレート。
+
+### 結論(C/D 確定 — **2026-06-27 人間承認済み**。いずれも現行値を維持・定数変更なし)
+
+> **承認(2026-06-27)**: N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / 20軸 を全て確定。中核成果は
+> **scene+7 で hit=0.47(flat+10 同値)= 問数削減の実証**。[2] 色フロントロードは害なしと判断、
+> タイプ別正規化/交互提示は**将来オプションのメモのみ・今は実装しない**。familiarity [4,3,2] 据置、
+> serendipity も**定義変更せず現行維持**(提案案は材料として本ログに残すのみ)。
+
+- **N_PAIRS_V14 = 8 を確定(現行維持)**。scene+7 で hit=0.47(=flat+10 と同値)に到達、
+  scene+8 で σ²=0.402(flat+10 の 0.376 に肉薄)+ 世界観ペア消化 15/9 まで伸びる。
+  scene+6 は hit=0.40 で不足。→ **7 が hit 同等の下限、8 が σ²・世界観カバレッジの余裕**。
+- **KAPPA = 0.65 を確定(現行維持)**。0.5/0.65/0.8 で hit は全て 0.47 で不変、σ² は
+  0.380/0.402/0.421 と単調。hit 基準では動かす理由なし(より尖らせたいなら 0.5 も可)。
+- **β_BT = 0.25 を確定(現行維持)**。この値で EIG はランダム/固定を hit・安定性で上回る
+  (下記[3])。色 EIG が世界観の 2.2 倍なのは β_BT ではなく σ²_color と fit 差に由来し、
+  β_BT 較正の必要を示すデータは出なかった。
+- **軸構成 = 20 軸を確定(現行維持)**。is_系3軸の有無で σ²・hit が完全に一致([+]
+  アブレーション)→ 推薦アウトカムに対し is_系は不活性(連続軸が信号を担う=設計どおり
+  表示専用)。残しても害なく reasons のタイブレーク表示に効くので 20 軸据置。
+
+### 所見(ブラッシュアップ材料。いずれも「定数/定義の変更は人間判断」)
+
+1. **[2] EIG 均衡(色 vs 世界観)**: color max EIG=7.63 bit / worldview=3.46 bit、**比 2.21**。
+   懸念had「σ²=20.83 で色 KL が小さく出る」とは逆に、色ペアは θ_color(3D)+θ_pref(20D)を
+   同時更新し fit 差も大きいため EIG が**大きく**出る。結果 EIG は色ペア5問を先に使い切る
+   (収束表 scene+7 が色/世=15/6=色5+世2/人)。hit は維持されるが短セッションで世界観軸が
+   後回しになる**色フロントロード**は実在。将来オプション: タイプ別 EIG 正規化 or 交互提示。
+   現状は同オーダーかつ hit 維持なので据置。
+2. **[1] 基本収束**: flat+10 σ²=0.376/hit=0.47 に対し scene+7=0.440/0.47、scene+8=0.402/0.47。
+   **7-8 問で flat+10 と hit 同等**を確認(σ² はやや緩いが世界観カバレッジは増える)。
+3. **[3] EIG vs ランダム vs 固定10(収束カーブ・発表主張の再確認)**:
+   hit は 4問時点 eig=0.53 / random=0.40 / fixed=0.47、6問時点 eig=0.47 / random=**0.07** /
+   fixed=0.47。**EIG はランダムを明確に上回り(6問で +0.40)、ランダムは序盤の悪手で不安定化**。
+   EIG vs 固定は早期(4問)で +0.06 優位、その後収束。**重要な正直注記**: θ_pref の avg σ² だけ
+   見ると random の方が早く縮む(4問 0.51 vs eig 0.61)— EIG は序盤予算を**色**(θ_color を縮める)
+   に正しく割くため。**能動学習の価値は σ²(θ_pref のみ)ではなく hit(アウトカム)と安定性に出る**。
+   ピッチの主張は hit+安定性で再確認、σ² 単独で見ると誤読する点を明示。
+4. **[4] ペルソナ別収束差(個人差=パーソナライズ実証)**: hit スプレッド 0.40(mina=0.20 /
+   aya=0.60 / yuki=0.60)。yuki(マット暗め)は他と top5 Jaccard=0.00 で完全分離=パーソナライズ
+   機能。一方 **mina vs aya の top5 Jaccard=1.00(同一)**= 2 つのティント系ペルソナが同じ TOP5 に
+   collapse(mina hit が 0.20 と低いのはこのため。mina の matching=10 と小さい niche を、色項
+   優位のシアー/明るめティントが上書き)。**ティント内クラスタの分離が弱い**点が課題。原因は
+   カタログのティント密集 + 色項優位の両面。x20 色別補正(後述)が効く可能性あり。
+5. **[5] familiarity 重み(w1/w2/w3)感度**: 既定[4,3,2] hit=0.47。w1=0/w3=0/均等 は不変、
+   **w2=0(cos 項オフ)で +0.07、cos重視[2,6,2]で −0.13**。→ **familiarity は実質 w2(cos)だけが
+   効く**。cos を上げると学習済み好みに似た商品を減点(=セレンディピティ押し)し hit を犠牲に
+   する(設計どおりの explore トレードオフ)。w1(対話)/w3(ΔE_inv)はこのシミュではほぼ不活性。
+   全体に過敏ではない(cos重視以外は Jaccard≥0.89)=ロバスト。**[4,3,2] 据置、w2 が唯一のレバー**
+   と認識。w1 不活性は I_dialog(scene_match)発火が稀なため=シーン項の効きは別途要観察。
+6. **[6] serendipity 定義比較**: 現行(TOP-N 中央値: ΔE>median ∧ fam<median)は 3 ペルソナ計
+   **10 件**フラグ(TOP-10 の 3-4 割を常に立てる=相対分割の宿命)。提案(確信ある上位軸を満たす
+   ∧ 低確信軸 var>0.5 で x20>0.5 を冒険)は計 **4 件**と選択的で、yuki=0(=真の冒険候補が無い時に
+   正しく棄権)。重複は 2 件のみで両定義はほぼ別物。**提案案の方が「気に入る確信 × 新しい方向」
+   という UX 意図に忠実だが件数は少なく、確信軸の確立(=十分な問数)に依存**。定義変更は設計判断
+   として保留、上記データを材料に人間が決める。
+
+### 検証インフラの確立
+- `make_a4_validation.py`: 6 分析 + KAPPA/is_系/序盤バイアスを 1 スクリプトで。
+  matplotlib は Agg、PNG は CI アーティファクト(`a4-figures`)。
+- CI: `a4.yml`(canonical、workflow_dispatch 専用。main マージ後に単独 dispatch 可)+
+  暫定で `test.yml` に `a4` ジョブを workflow_dispatch 限定で追加(feat/v14 では a4.yml が
+  main 未登録で dispatch 不可のため)。**この test.yml の暫定ジョブは v14 完了時に除去予定**。
+- run: `gh workflow run test.yml --ref feat/v14` → `gh run view <id> --log` で数値回収。
+
+### 次の設計判断(人間)— A4 結果を受けて
+- **色ごと x20 補正(Lab→x20 の色別補正)**: [4] の mina/aya collapse はカタログのティント密集 +
+  色項優位が原因。色別に x20(特に色相依存の世界観軸)を補正すれば分離が改善する可能性。
+  A4 結果を見てから別途設計する。
+
+### 色別 sheer 補正 γ スイープ(2026-06-27 実施・**不採用**)
+
+人間承認のもと `apply_color_correction`(sheer をゼロ平均・有界で色変調、γ=0 で現行一致)を実装し、
+A4 harness で γ∈{0,0.1,0.2,0.3} をスイープ(matching/true_pref/pair は baseline 固定、recommend の
+km_table x20 にのみ補正適用)。**採用ゲート①(mina/aya Jaccard 低下)を満たさず不採用**:
+
+| γ | mina/aya | yuki/mina | yuki/aya | 全体hit | mina hit | maxΔsheer |
+|---|---|---|---|---|---|---|
+| 0.0 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.000 |
+| 0.1 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.035 |
+| 0.2 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.070 |
+| 0.3 | 1.00 | 0.00 | 0.00 | 0.47 | 0.20 | 0.105 |
+
+- **maxΔsheer は増加(補正は効いている)が mina/aya Jaccard は 1.00 不変** → collapse は **sheer 解像度ではない**。
+- 仮説: recommend の **色項 α·ΔE(α=3)が支配**し、mina/aya が学習後に近い μ_color へ収束 → TOP5 が色で
+  決まり sheer の pref 寄与が順位を動かさない(or 学習 μ_pref[sheer]≈両者同程度)。
+- **コードは残す**(`CORRECTION_GAMMA=0` で完全無効=現行一致、後方互換)。採用 γ の決定は人間 →
+  **現状は γ=0(無補正)を維持**。次の手は人間判断(下記オプション)。
+- **次オプション(要人間判断)**: (a) harness を instrument 化して collapse の真因を特定 →【下記で実施済】、
+  (b) 色を定義する軸や α 再重み付けを検討、(c) カタログ限界として collapse を受容。**勝手に α や軸は変えない**。
+
+### collapse 機序の instrument 確定(オプション (a)・2026-06-28)
+
+harness に診断節を追加し scene+8 学習後を実数化。**真因を確定**:
+
+- **(1) μ_color が完全一致**: mina = aya = (L53.7, a38.3, b18.7)、**ΔE2000(mina,aya)=0.00**。yuki のみ ΔE≈11.36。
+  → 色ペア5問の oracle 選択が mina/aya で一致 → θ_color が同一に収束。**collapse の根**。
+- **(2) μ_pref は差あり(但し小)**: mina=sheer+0.82/korean+0.46/girly+0.42、aya=sheer+0.76/girly+0.60/glossy+0.42。
+  yuki=velvet+0.57/korean−0.25 で明確に別。mina/aya は方向が似て差が小さい。
+- **(3) 色項が好み項を桁で支配**: 両者の TOP5 は**同一商品**。|色項 −α·ΔE|平均=6.78 に対し |好み項|=
+  mina 0.79(比 **9x**)/ aya 1.12(比 **6x**)。μ_color 一致ゆえ色項は両者全商品で同値=差別化に寄与ゼロ。
+- **(4) 好み項に分離の素地はあるが小さい**: μ_color 一致で色項が同値な商品でも好み項差は最大 0.45
+  (例 rmd_zero_velvet_10=0.452)。だが色項スプレッド(TOP5 内 4.77〜8.69)に対し小さく TOP5 を動かせない。
+  ※ harness の「好み項重み ~0x 必要」表示は print 式の不備(色項の**ペルソナ間差**=0 を分母誤用。
+    正しくは「色項は両者同値=差別化は好み項のみが担うが、その差は色項スプレッドに対し ~1/10」)。
+
+**結論(数値の含意・(b)/(c) は人間判断)**:
+- 真因 = **(i) μ_color の収束一致**(色ペアが mina/aya を分離できていない)+ **(ii) 色項 α=3 の支配**。
+- (b) の α 引き下げで好み項を効かせるには色項スプレッド比から **~5〜9x** 相当の再重み付けが必要 →
+  色フィット品質を大きく損なうリスク。より筋が良いのは **色ペアの分離力向上**(mina/aya の色嗜好を
+  割る色ペア設計)だが設計変更。または (c) 受容(shortlist で本人が最終選択=UX で吸収)。
+- **数字を出して STOP。α/軸/ペアは勝手に変えない。** 採用方針は人間判断。
+
+### 色ペアの分離力探索(オプション α・2026-06-28・**collapse 解消を実証**)
+
+人間承認(方針 α)のもと、harness で「mina/aya が逆の側を選ぶ色ペア」を全ペア探索し、それで学習させた
+ときの μ_color 乖離と top5 Jaccard を検証(PAIR_BANK 自体は変更せず効果提示まで)。
+
+- **分離ペアは豊富**: mina/aya が逆を選ぶ色ペアは **1887 / 9730 ペア**(約 19%)。色嗜好を割る材料は十分ある。
+- 上位候補(decisiveness=両者とも迷わない度): zero_velvet_18×blur_fudge_12(6.23)、dewyful_16×zero_velvet_04
+  (6.10)、zero_velvet_16×bare_mool_01(5.88)等。
+- **検証(現行5色ペア vs 分離5色ペア、学習後 mina vs aya)**:
+
+  | 色ペア | ΔE(μ_color) | top5 Jaccard |
+  |---|---|---|
+  | 現行5色ペア | 0.00 | 1.00(collapse) |
+  | **分離5色ペア** | **21.31** | **0.00(完全分離)** |
+
+- **結論**: 色ペアを分離力のあるものに差し替えると μ_color が ΔE=21.31 まで割れ、TOP5 が完全に分離(Jaccard 0.00)。
+  **(α) 色ペア再設計が collapse を決定的に解消する**ことを実証。α も x20 軸も触らずに済む。
+- **次(人間/Kawano 判断)**: 実 PAIR_BANK の色5ペアを、分離力のある組に差し替える設計。ただしペアは
+  「明るい vs 深い」等の UX として意味の通る問いである必要があり、商品選定は Kawano と要協議
+  (N_PAIRS と同様、コードでは変更しない)。harness は分離ペア候補をスコア付きで提示できる状態。
+
+### 分離候補の UX 解釈 + 現行5ペアの実測対比(2026-06-28・Kawano 協議材料)
+
+「分離力 ≠ 質問の意味性」のトレードオフを踏まえ、各色ペアの eff_lab 差を**知覚軸に直交分解**
+(明度 ΔL / 彩度 ΔC* / 色相 = C·Δhue 弧長)し、支配軸とラベルを付与。
+
+**現行5色ペアの実測対比(意図 vs 実測)— collapse の遠因が裏取り**:
+
+| pair | 意図ラベル | 実測支配軸 | ΔL / ΔC* / Δhue |
+|---|---|---|---|
+| color_01 | 明るい vs 深い | **色相**(青み⇔黄み) | +9.4 / +5.2 / −15° |
+| color_02 | 暖色 vs 寒色 | 色相 | +7.3 / +6.4 / −22° |
+| color_03 | 鮮やか vs ヌード | 彩度 ✓ | −35 / +38 / +6° |
+| color_04 | ピンク vs コーラル | **彩度** | +4.9 / −13 / −21° |
+| color_05 | ローズ vs レッド | 彩度 | −1.4 / +11 / +7° |
+
+- **実測支配軸の内訳 = 色相2 + 彩度3、明度ゼロ**。**「明るい vs 深い」のはずの color_01 は実測では色相対比**
+  (ΔL わずか 9.4)。意図と実測がズレ、5問が**色相/彩度の2軸に偏在**=明度軸を一度も聞いていない
+  → 似た問いの反復で μ_color が割れにくい = **collapse の遠因**を実測で確認。
+
+**分離候補(全 1887 件)を知覚軸でバケツ分け(各軸 上位3・decis=分離力)**:
+
+| 軸 | 件数 | 上位候補(decis / ΔL ΔC* Δhue) |
+|---|---|---|
+| 明度(明るい⇔深い) | 320 | dewyful_16 × zero_velvet_04(6.1 / +25 −16 +9°)、zero_velvet_16 × bare_mool_01(5.9)、bare_mool_01 × juicy_lasting_19(5.9) |
+| 彩度(鮮やか⇔くすみ) | 943 | the_juicy_lasting系 × zero_velvet_26(5.0 / +22 −27 +6°)、× dewyful_14(5.0) |
+| 色相(青み⇔黄み) | 624 | zero_velvet_18 × blur_fudge_12(6.2 / −19 +3 −30°)、zero_velvet_14 × juicy_lasting_01(5.0 / −36°) |
+
+- **3軸すべてに分離候補が豊富**。特に**現行に欠けている「明度」軸に 320 件**=分離力も意味性も両立する問いを
+  追加できる。**選定方針(Kawano 協議)**: 分離力上位だけを機械採用せず、(1) 明度/彩度/色相を**バランス良く**
+  カバー、(2) 各ペアが「明るい vs 深い」等 UX として一言で言える問いになる組、を 5 本選ぶ。harness は
+  この一覧をいつでも再生成可能。**実 PAIR_BANK 差し替え・商品選定は人間 + Kawano 判断**(コードでは変えない)。
+
+### たたき台5色ペア案 v1 + scene+8 試算(2026-06-28・**collapse は解けるが副作用判明**)
+
+明度2/彩度1/色相2(商品重複なし・現行の明度欠落を是正)で自動選定:
+
+| # | 商品ペア | UX 問い | 軸 | decis |
+|---|---|---|---|---|
+| 1 | dewyful_16 × zero_velvet_04 | 明るい ⇔ 深い | 明度 | 6.1 |
+| 2 | zero_velvet_16 × bare_mool_01 | 明るい ⇔ 深い | 明度 | 5.9 |
+| 3 | the_juicy_lasting_04 × the_juicy_lasting_27 | 鮮やか ⇔ くすみ | 彩度 | 5.0 |
+| 4 | zero_velvet_18 × blur_fudge_12 | 黄み(コーラル)⇔ 青み(ローズ) | 色相 | 6.2 |
+| 5 | zero_velvet_14 × juicy_lasting_01 | 黄み ⇔ 青み | 色相 | 5.0 |
+
+**試算(この5本 + 世界観、scene+8)**:
+
+| 指標 | 現行 | たたき台v1 | 評価 |
+|---|---|---|---|
+| mina/aya Jaccard | 1.00 | **0.00** | ✅ collapse 解消(μ_color ΔE=23.7) |
+| aya hit | 0.60 | **0.80** | ✅ 改善 |
+| yuki hit | 0.60 | 0.60 | = 維持 |
+| aya/yuki Jaccard | 0.00 | 0.00 | ✅ 維持 |
+| **mina hit** | 0.20 | **0.00** | ❌ **悪化(分離したが誤った方向へ)** |
+| **mina/yuki Jaccard** | 0.00 | **0.67** | ❌ **新たな mina↔yuki collapse** |
+
+- **主目的(mina/aya collapse)は解消**(Jaccard 1.00→0.00、μ_color ΔE=23.7)、aya は hit 改善。
+- **だが副作用**: mina の hit が 0.00 に落ち、mina↔yuki が 0.67 で重なった。**「分離力 最大」で選ぶと
+  mina の μ_color が(明度ペアで深い側へ過回転し)yuki 側へ寄り、誤った分離になる**。= ユーザーが言った
+  「分離力 ≠ 質」が定量的に表面化。**max-decis 選定は不適**で、分離 × hit 維持を両立する選定が要る。
+- 色/世内訳が 5/3 でなく mina 4/4・aya 3/5(best_pair の EIG 順が新バンクで変化)= N 構成も要調整。
+- **結論**: v1 は「明度軸を足せば mina/aya は割れる」ことは示すが**そのままは採用不可**。次は (i) hit を壊さない
+  制約付き選定(分離かつ各 persona の true_color を歪めない組)、(ii) 明度ペアを穏やかに、等で v2 を作る。
+  **Kawano 協議材料 + 選定基準の再設計が必要**。即 PAIR_BANK には入れない。
+
+### たたき台 v2 — 制約付き選定(2026-06-28・**全 recipe 不採用 = 色ペア再設計の限界を確定**)
+
+v1 の反省(mina/aya だけ見て mina/yuki を見落とした)から採用ゲートを厳格化:
+**全 persona hit≥現行 かつ 全3ペア Jaccard≤現行(新規 collapse ゼロ)かつ mina/aya 割る**。
+明度を穏やかに割る案(decis 最大でなく支配軸差が小)含む6 recipe を全ペア総当たりで試算:
+
+| recipe | ma | my | ay | hit m/a/y | 判定 |
+|---|---|---|---|---|---|
+| 現行(基準) | 1.00 | 0.00 | 0.00 | 0.20/0.60/0.60 | — |
+| 明1穏/彩2/色2 | 0.00 | **0.67** | 0.00 | **0.00**/0.80/0.20 | ✗ |
+| 明1穏/彩1/色3 | 0.00 | **0.43** | 0.00 | **0.00**/0.80/0.20 | ✗ |
+| 明1穏/彩2/色2(色穏) | 0.00 | **0.43** | 0.00 | 0.20/0.80/**0.00** | ✗ |
+| 明2穏/彩1/色2 | 0.00 | **0.43** | 0.00 | **0.00**/0.80/**0.00** | ✗ |
+| 明1decis/彩2/色2 | 0.00 | **0.67** | 0.00 | **0.00**/0.80/0.60 | ✗ |
+| 明1穏/色4 | 0.00 | **0.67** | 0.00 | **0.00**/1.00/0.40 | ✗ |
+
+- **全 recipe が不採用**(ゲートが v1 同様の罠を正しく排除)。**一貫パターン: mina/aya を割ると必ず
+  mina が yuki 側へ寄り(my=0.43〜0.67 の新 collapse)、mina hit が 0.00 に落ちる**。aya hit はむしろ 0.80 に改善。
+- **深い含意**: mina/aya は**色の好みが本質的に近い**(色選択が一致して μ_color が同一収束した)。両者の本当の違いは
+  **仕上がり/世界観**(mina=韓国系/サチュレート, aya=シアー/グロス)。色ペアで無理に色を割ると、niche の小さい
+  mina(matching=10)が行き場を失い yuki の暗色域へ押し出される。**= 色ペア再設計だけでは厳格ゲートを満たせない**。
+- **これは選定基準の問題ではなく構造**: 色が近い2人を色軸で分離する事自体に無理がある。差別化は本来
+  finish/worldview 側で出すべきで、色項支配の recommend ではそれが TOP5 に出ない(エポック16 [diag] の (ii) と一致)。
+- **次の戦略は人間判断**(harness はここで一旦結論):
+  - (A) mina/aya は**色では分けない**と認める(色の好みが近いのは正当)。差別化は reasons/世界観表示で出す。
+  - (B) **persona 定義の見直し**: mina(matching=10)は人工的に厳しい edge かも。実ユーザー像と乖離してないか。
+  - (C) ゲートを緩める(mina/aya 分離を最優先、yuki の微変動を許容)。
+  - (D) (β) 好み項重み増(色フィット品質を犠牲)。エポック16 で保留した路線。
+  - **色ペア再設計(α)は単独では gate を満たさず**。v1/v2 は「単純な分離力選定がなぜ不十分か」の根拠として残す。
+
+### ★ collapse への最終方針: 戦略 (A) 採用(2026-06-28・人間決定)
+
+v1/v2 の総当たり実証(色ペアをどう選んでも mina を yuki へ押し出さずに mina/aya を割れない)を受け、
+**戦略 (A) を採用**:
+
+- **色が近いペルソナで TOP5 が似るのは正当**(無理に色軸で分けない)。mina/aya の本質的違いは色ではなく
+  **仕上がり/世界観**(mina=韓国系サチュレート / aya=シアーグロス)。
+- **差別化は TOP5 の順位ではなく `reasons`(top_axes)+ コンシェルジュ発話 + shortlist で担保**。
+  「あなたは韓国っぽい鮮やかさが好きだから、この中ではこれ」「あなたはシアーなツヤが好きだから、これ」のように
+  **同じ商品群でも理由が違えば体験は別物**。最終選択は本人(shortlist)。**F4-fix の shortlist と F3 の reasons が
+  既にこの受け皿**になっている。
+- **色ペアは現行のまま据え置き**(v1/v2 は不採用。根拠として本ログに保存)。
+- **(C)〔ゲート緩めて yuki 犠牲〕と (D)〔好み項重み増で色フィット犠牲〕は却下**(今うまくいっている所を壊すため)。
+- **(B) を重要な留保として記録**: harness のペルソナは**合成定義**であり、mina(matching=10)は人工的な edge で
+  **collapse がシミュ固有の可能性**がある。実ユーザーがいない現状では確定不能 → **Phase 2 の実ユーザーデータで
+  再検証する項目**とする(残課題に追記)。
+- 検証(下記 [reasons]): 色が近い mina/aya でも reasons.top_axes が**別物になっているか**を harness で確認。
+
+### [reasons] 戦略 (A) の実証結果(2026-06-28・**正直な結論: mina/aya では reasons も ほぼ同じ**)
+
+共有 TOP5(mina/aya は5件すべて共有)で各 persona の top_axes:
+
+| 商品 | mina top_axes | aya top_axes |
+|---|---|---|
+| the_juicy_lasting_05 | 透け感 / うるおい | 透け感 / うるおい(同一) |
+| blur_fudge_14 | ガーリー / うるおい | ガーリー / **明るさ** |
+| the_juicy_lasting_10 | 透け感 / うるおい | 透け感 / **ガーリー** |
+| blur_fudge_17 | うるおい / ガーリー | ガーリー / **明るさ** |
+| juicy_lasting_23 | 透け感 / うるおい | 透け感 / **ガーリー** |
+
+- mina テーマ = {透け感, うるおい, ガーリー} / aya テーマ = {透け感, うるおい, ガーリー, **明るさ**}。
+  **mina 固有軸 = なし / aya 固有軸 = 明るさ のみ**。第2軸が時々違う程度で、**大半が一致**。
+- **意図した差別化(mina=韓国/鮮やか, aya=シアー/グロス)は reasons に出ない**。理由: (1) 共有商品が
+  sheer/moisture 系で korean/glossy の x20 が高くない、(2) そもそも mina/aya の学習後 μ_pref が似ている
+  (エポック16 [diag]: 両者とも sheer/girly/moisture/korean が上位)。
+- **正直な含意**: **(A) の「reasons で差別化」は、この mina/aya ペアでは弱い** — 差別化できるのは「実際に
+  異なる嗜好」だけで、mina/aya は**色も好みも本質的に近い**(= ほぼ同一人物)。これは **(B) の最強の裏付け**:
+  **collapse の大部分は合成 persona が似すぎている人工的 edge**。
+- **方針への影響**: (A) は**戦略として依然正しい**(非破壊的)。だが **mina/aya 固有の collapse は (A) では
+  体感差を作れない**ほど両者が近い。→ **実ユーザーデータでの再検証(残課題 0)が必須**。
+
+**対照: mina vs yuki(本当に異なるユーザー)= (A) が機能する実証**:
+- mina/yuki **共有 TOP5 = 0 件**(推薦そのものが完全に別物)。
+- yuki reasons テーマ = {マット感, メイク感, 色移りしにくさ, 落ちにくさ, 鮮やかさ}、mina = {うるおい, ガーリー,
+  透け感} → **固有軸が完全に分離**(共通ゼロ)。
+- **結論(両側から締まった)**: 似た人(mina/aya)=推薦も理由も似る(正当・無い差は作らない)/ 異なる人
+  (mina/yuki)=推薦も理由も明確に別(**(A) の差別化が機能**)。
+
+### ★ collapse 調査クローズ(2026-06-28)
+
+A2-fix の candidate_count 検証中に発見した mina/aya collapse を、**diag → pairsep → v1 → v2 → reasons →
+mina/yuki 対照**の系列で完全に決着:
+
+- **正体**: アルゴリズムの欠陥ではなく、**合成ペルソナ mina/aya が色も好みも本質的に同一**(μ_color ΔE=0.00、
+  μ_pref 上位軸もほぼ一致、reasons もほぼ一致)= 人工的 edge。
+- **採用**: **(A)** — 色が近い人の TOP5 類似は正当な挙動。差別化は reasons + コンシェルジュ + shortlist(本人の
+  最終選択)で担保。本当に異なるユーザー(mina/yuki)では推薦も理由も明確に分かれる(実証済)。
+- **却下**: (C)〔ゲート緩め〕(D)〔好み項重み増〕= 動いている所を壊す。色ペアは現行据え置き。
+- **残課題 0(Phase 2)**: mina/aya collapse が合成 persona 固有か、実ユーザーデータで再検証。
+- 成果物: harness の [diag]/[pairsep]/[reasons] 節は再現可能な検証資産として保存。v1/v2 は「単純な分離力選定が
+  なぜ不十分か」の根拠。**この調査は CC が自分の harness のペルソナ定義を疑って (B) に昇格させた点が要諦**
+  (アルゴリズムを壊さずに「問題はテスト側」と特定)。Kawano 協議メモ = `KAWANO_PAIRS_NOTE.md`。
+- ユーザー非依存「みんなの定番」。MVP は売上/レビュー無のため **カタログ代表性(median Lab centroid への
+  Euclidean 距離小=汎用)で代用**(本番は売上/レビューに差し替え前提・算出根拠をコード明記)。決定的。
+  `test_popular_static_ranking` 追加(test_v13_endpoints 計16)。
+
+### openapi.json 再生成 CI(`openapi-sync.yml`、具体化・次バッチ運用)
+- `openapi.json` が 6/15(A3 の /v14 追加前)で陳腐化 → gen 型に v14 欠落(F2本体で手書き暫定)。
+  `app.openapi()` を clean Linux で dump し artifact 化(ローカルは skimage でハング)。型生成は
+  color-capture の `gen:api-types` で実行。再発防止。`workflow_dispatch`(マージ後 or test.yml 折込で起動)。
+
+---
+
+## エポック 17: コンシェルジュ発話の API 一本化(2026-06-29)
+
+**方針転換(6/29 MTG)**: フロントを iPhone 向け React Native に移行しリポジトリも Next.js 版と分離。
+発話生成ロジックをフロント(`conciergeScript.ts`)に置くと RN 版と二重実装になるため、**発話生成を
+バックエンド(Python)に一本化**して API で返す。フロントは「API が返した文面を吹き出しに出すだけ」。
+
+- `concierge_speech.py`: `conciergeScript.ts` の**忠実移植**(挙動不変)。既存 reasons(A2)/ theta_snapshot(A3)を
+  日本語文面に変換するだけ=新しい推薦データやスコアは作らない。文面テンプレは Kawano 3パターン待ちのため
+  仮テキスト + TODO(Kawano) を移植。`/v14/concierge_speech`(explore/recommend/decide の3フェーズ)。
+- **軸実況は μ_pref>0(好意方向)のみ**(#3 承認)。否定方向の実況は Mina に優しくない + 文面待ち増を避けるため
+  Phase 2。
+- **★ spoken_axes を `V14Session` に相乗りさせた理由(混在の記録)**: 中間実況の重複防止・予算(最大3)の状態を
+  どこに置くか(a)独立引数 vs (b)session 相乗り、を比較。**spoken_axes が要るのは explore のみ、かつ explore は
+  session を既に往復している** → (b) なら**フロント新規実装ゼロ**(session という blob を往復するだけ・中身を知らない)。
+  RN=Kawano の実装負担最小を優先し (b) 採用。**「表示状態(発話予算)を推薦セッションに相乗り=関心の軽い混在」**
+  という設計上の妥協は認識の上での判断(分担思想=複雑さはこちら持ち・Kawano は自領域に集中、に合致)。
+- テスト: `test_concierge_speech.py`(モジュール直・12件、explore の新規のみ/重複しない/予算/μ>0/最確信選択、
+  recommend hybrid/user/product/serendipity/fallback、decide、**TS≡API パリティ表**)+ `test_v14_flow.py` に
+  エンドポイント疎通。既存スキーマ不変・`/v13`・`/v14` 既存無変更(後方互換)。`conciergeScript.ts` は非推奨注記の上で残置。
+- **Web版繋ぎ込み(2026-07-04・color-capture feat/v14-recommend)**: フロントの発話を `/v14/concierge_speech` 経由に
+  置換。session に `conciergeSpeech`(表示状態)追加、Concierge.tsx は「API 発話を表示するだけ」に。PairCompareStep が
+  explore(session 相乗りで spoken_axes を往復)、RecommendStep が recommend/decide を駆動。inline の conciergeScript
+  使用を撤去(誰も import しない=非推奨として孤立)。color-capture CI(tsc)green。
+  **通し(E2E)静的トレース済**(実起動は npm の Gatekeeper ハングで不可): 遷移 intro→scene→wrist→lip→pc→pair→recommend
+  と scenes/lip_lab/pc/userState の受け渡しは整合。要ブラウザ確認は別途(下記残課題)。
+  **未決(behavior判断)**: concierge 呼び出しがペア送信の submitting をまたぐ(発話取得までボタン無効の短い待ち)。
+  ブロック維持 or 非同期化(spoken_axes が速クリックで稀に重複)のどちらかは人間判断 → **A(ブロック維持)で確定**(2026-07-04)。
+- **プレビューデプロイ(2026-07-04・通しブラウザ確認用)**: feat/v14 を**別 HF Space** `Tamable/fibrous-lipstick-api-v14`
+  (`https://tamable-fibrous-lipstick-api-v14.hf.space`)にデプロイ。本番 Space(main)・main ブランチは無変更。
+  **HF の binary policy(>1MB PNG 拒否)を履歴ごと回避するため orphan 単一コミット**(feat/v14 のツリー − 全図PNG・履歴なし)
+  を `git push hf-v14 <orphan>:main --force`。※ `git rm` の新コミットでは過去 blob が履歴に残り pre-receive で弾かれる
+  → orphan で履歴を捨てるのが要点。curl 検証: /docs・/v14/pair_compare/start・/v14/concierge_speech・/v13/popular すべて 200。
+  フロントは Vercel プレビュー(feat/v14-recommend)+ env `NEXT_PUBLIC_LIP_API_URL` を上記 Space に向ける(人間実施)。
+- **recommend「計算中」固定バグ修正(2026-07-04・color-capture)**: RecommendStep の取得 effect が
+  `finally { if(!cancelled) setLoading(false) }` で、`setRecommendations` が dep(`recommendations.length`)を
+  変える→effect cleanup で `cancelled=true` → **loading が閉じず「推薦を計算中…」で固定**(推薦は取得済みでも表示されない)。
+  F3 の concierge `await` 追記がその窓を広げていた。修正: (1) finally を**無条件** `setLoading(false)`、
+  (2) recommend 導入発話 concierge を **await せず fire-and-forget**。数理コア/API 無変更。
+- **ペア比較プレビューを「顔全体 + 唇だけ着色」に(2026-07-04・color-capture)**: 唇クロップ断片では Mina が
+  似合いをイメージしにくい → 顔写真全体を左右に並べ唇の色だけ2案。**lipDetection.ts 無変更**(既に顔座標系の
+  mask/outer・innerPolygon を返しており、呼び出し側が捨てていただけ)。`SampleResult.face`(顔画像~720px +
+  唇ポリゴン)を追加、`renderFaceLipPreview` がポリゴンからマスク再構築 → **recolorLips 純関数を流用**。
+  実マスクなので口周りの肌が染まらない。face 無ければクロップにフォールバック(後方互換)。
+  **★段階方針(認識合わせ)**: 当初はペア比較だけ顔全体化・推薦側は暫定クロップ、最終ゴール=統一、としていた。
+- **写真アップロード対応 + 推薦側も顔全体に統一(2026-07-04・color-capture)**: ユーザー要望で前倒し実施。
+  - **写真入力**: LipCapture に「カメラを使わず写真を選ぶ」を追加。アップロード画像を 1280px にダウンスケール →
+    同じ detectLips → sampleFromMask + buildFaceCapture 経路(カメラ不要でも顔全体プレビューが使える)。lipDetection 無変更。
+  - **推薦側統一**: RecommendStep の TOP-5/詳細/比較/決定カードも `renderFaceLipPreview`(face あれば顔全体・無ければ
+    クロップ fallback)。→ **ペア比較・推薦とも顔全体 + 唇着色で統一(混在解消・最終ゴール達成)**。recolorLips 流用。
+- **コンシェルジュ発話の生 pair_id 漏れ修正(2026-07-04)**: reason 発話が `evidence`(= bayesian の
+  pair_id 列)を生で埋め、「さっき**wv_09_sweet_vs_classy**。だからこれ」と表示。`_PAIR_LABELS`(pair_id→一言ラベル、
+  pair_compare._PAIR_SPECS と同一)で「さっき「甘い vs クラシー」で選んだのが効いてる。だからこれ」に変換。未知値は
+  生を出さず軸ラベルにフォールバック。API concierge_speech.py + TS conciergeScript.ts 両方(TS≡API 維持)+ test 13件。
+- **唇プレビューの自然化(recolorLips 調整・2026-07-04)**: 「塗り絵」感を低減。(1) **マスク縁フェザリング**(box blur で
+  羽化α・縁薄く中央濃く)、(2) **不透明度 LIP_OPACITY=0.85**(下地を透かし馴染ませる)、(3) **L 偏差保持**(ツヤ/陰影/
+  色ムラ)は維持。`LIP_TEXTURE_STRENGTH/OPACITY/FEATHER_RADIUS` を定数化(後調整可)。純関数・数理コア/API/lipDetection 無変更。
+- **パーソナルカラー表示(2026-07-04)**: RecommendStep ヘッダに `userState.pc_season`、各カードに `catalog_pc_tags` +
+  ユーザー PC と一致すれば「✓一致」。推薦色と PC の整合を目視確認できるように。
+- **「みんなの定番」も本人の顔に重ねる(2026-07-04)**: 推薦 TOP-5 は顔全体プレビューに統一済だが定番だけ
+  マスストーンの色見本のままで見え方が別基準 → 統一。定番は元々マスストーン `lab` しか持たない(effective_lab
+  非計算)ため、`GET /v13/popular` に任意の `lip_l/lip_a/lip_b(+mu_thickness)` を追加。渡された時のみ TOP-N 各定番に
+  `km.compute_applied_lab(lip, ks, s, mu_t)` で **effective_lab を付与**(渡さなければ null=従来どおり)。
+  **ランキング自体はユーザー非依存で不変**(effective_lab は付加情報のみ、順序に不使用)を test で担保(18件)。
+  フロント: RecommendStep が `userState.lip_lab`(+θ_thickness.μ)を渡し、返る effective_lab で `renderFaceLipPreview`
+  → PopularSection が定番も顔全体に重ねて表示。face/effective_lab が無い時はマスストーン Lab の色見本にフォールバック。
+  CI(API test.yml + color-capture tsc)green、v14 プレビュー Space 再デプロイ(orphan push)→ curl で effective_lab 付与&順序不変を確認。
+
+## エポック 18: Kawano AR 版の登場とフロント統合(2026-07-10)
+
+- **Kawano さんから AR 本実装版が届く**: 新リポ **`YK-0204/fibrous-lipstick-ui`**(zip 共有 → GitHub 確認、WRITE 権限あり)。
+  中身は color-capture と共通の v14 ベース(逐次ペア + concierge + 同一 lipDetection IF)から分岐した別系統で、
+  目玉は **リアルタイム動画 AR 試着**(`arRenderer.ts`=WebGL シェーダー / `lipMask.ts` / `useArTryOn.ts` / `ArTryOnStep`)+
+  **❤️/✕ → update_user → 再 recommend のベイズ学習ループ** + KEYROOM デザイン(全画面・スマホ縦)。
+  シェーダーの合成数式は我々の `recolorLips`・設計書 §6 `composite_lip` と**完全一致**(L 偏差保持 + a/b 置換)を確認。
+  検出 3 フレーム間引き + ランドマーク線形補間で 60fps、meanL 定期再計算、デモ静止画モードあり。品質高い。
+- **統合方針(人間承認)**: **Kawano 版を土台**に我々の追加を移植 / プレビューは**併用**
+  (一覧比較 N 件同時=静止画 recolorLips、深掘り試着=AR)。**shortlist(keep/decide)フローは移植しない**
+  (AR の ❤️/✕ が観測送信を担う。extras を AR に足すかは Kawano さんと後日協議)。
+- **実施**: `feat/v14-merge` ブランチで (1) SceneStep(scenes → /v14/pair_compare/start。型は Kawano 版が既に対応・未使用だった)
+  (2) 静止画顔プレビュー(recolorLips/lipPreview/buildFaceCapture 移植、LipCapture 両経路で face 添付、lipDetection 無変更)
+  (3) /v13/popular 接続(lip_lab → effective_lab で定番も顔に重ねる)(4) PC ✓一致チップ (5) tsc CI + .env 注記
+  (**本番 Space に /v14/* と /v13/popular は無い=404 確認。当面 v14 プレビュー Space に向ける**)。
+  CI green → **PR #1**(https://github.com/YK-0204/fibrous-lipstick-ui/pull/1)を Kawano さん宛に作成。main へは自分でマージしない。
+- **リポジトリの正の移動**: フロントの主戦場は color-capture → **fibrous-lipstick-ui** に移行。
+  color-capture の `feat/v14-recommend` は参照用として残す(README に注記)。
+- **candidate_count ラチェット化(Kawano 報告②「140件中5→6に増える」への対応・2026-07-10)**:
+  **診断=バグではなく定義上の挙動**。competitive set(threshold=5位−0.15·(1位−5位)、A2-fix)は事後の
+  スナップショットで、EIG ペアが毎回「最も不確実な軸」を突く以上、回答が中位商品群を押し上げれば圏内件数は
+  増える(spread 変化で閾値自体も動く)。A4 で見たのは全体傾向の縮小で、±1〜2 の揺れは織り込み。
+  問題は文言「絞り込めました」と非単調な数字の**演出の不整合**。
+  **採用=案A(API 側ラチェット)**: 表示 `candidate_count = min(過去最小, 今回生値)` で単調非増加を保証、
+  過去最小は `V14Session.cc_floor` に相乗り(spoken_axes と同型・フロント無変更で直る=RN/Next 二重実装回避の
+  方針に整合)。生値は `candidate_count_raw` で併載(正直さ・診断用)。案B(文言変更)・案C(フロント min=
+  二重実装)は不採用。test_v14_flow に単調性 assert 追加。
+  **副発見・修正**: 旧 `/v14/pair_compare/next` は V14Session を新規構築しており **`spoken_axes` を毎回
+  落としていた**(コンシェルジュ実況の重複防止/予算がリセットされる潜在バグ)→ 持ち回りに修正 + 回帰テスト
+  (test_v14_session_carries_spoken_axes_and_floor)。
+- **extras{action,kept,decided} を AR 観測に実装(人間承認「それないとあかんでしょ」・2026-07-10)**:
+  fibrous-lipstick-ui の ❤️/✕ に extras 付与 + **「💄 この色に決める」ボタン**を新設
+  (`extras:{action:"decide", decided:true}`)。decide は再推薦せず終点扱い。API 側は F4-fix #4 の
+  Observation.extras で受け入れ済み(ベイズ更新不使用=Phase 2 の購買意思データ収集)。
+  like と decide の区別は今記録しないと後から取り返せない、が判断理由。プレビュー Space で受理をライブ確認。
+  決定後の完了演出は Kawano さんのデザイン課題として残置。
+
+---
+
 ## 残課題(後続のため)
 
+0. **[Phase 2・実ユーザー検証] mina/aya collapse は合成 persona 固有か**: A4 harness のペルソナは私の
+   合成定義で、mina(matching=10)は人工的な edge の可能性。実ユーザーデータが集まったら「色の好みが
+   近いユーザー同士で TOP5 が似る」現象が実在するか、reasons による差別化が体感として機能するかを再検証する
+   (エポック16 戦略 (A) の (B) 留保)。
 1. **`healthy_pink × イエベ秋 = 0.60`** が唯一の acceptable。境界ケース、深追いせず。
 2. **カタログ pc_season タグ未付与**(11/145 ≈ 8%)。再タグ付けでさらに精度向上余地。
 3. **マスク抽出の限界**: 赤くない唇/側面顔/低照明では色しきい値法に限界。将来
@@ -881,3 +1411,31 @@ v1.3 個人化層(エポック10)を実装した後、ベイズ更新と推薦�
    thickness 観測に含めるかは Phase 2 で再検討。
 9. **観測重みの viewed_seconds 反映**(設計書 §12.6): `log(1+viewed_seconds)` で
    観測ノイズを調整する経路。現状は重みなし。
+10. **★[マージ前ブロッカー] color-capture の preview 向け設定を main マージ前に撤去**:
+    v14 プレビュー検証のため color-capture(`feat/v14-recommend`)に入れた **`.env.production`
+    と apiClient の preview 向け設定**(`NEXT_PUBLIC_LIP_API_URL` をプレビュー v14 Space
+    `https://tamable-fibrous-lipstick-api-v14.hf.space` に向ける等)を、**main マージ前に必ず外す/本番
+    API に戻す**。外し忘れると本番フロントがプレビュー Space を叩き続ける。※対象は API repo でなく
+    color-capture repo。エポック17(2026-07-04)の暫定措置で、マージ時に解消すべき技術的負債。
+
+---
+
+## 将来像(Phase 2 以降の検討事項)
+
+### コンシェルジュ相談機能(双方向チャット)
+
+現行のコンシェルジュは **一方通行・テンプレ発話**(`/v14/concierge_speech`・状態 → 定型文・**LLM 不使用**)。
+将来、ユーザーが自由入力で相談できる **双方向チャット**(例:「学校でもバレない?」「これ落ちにくい?」に
+その場で答える)を足す構想がある。**今回は実装せず、拡張ポイントだけ残す**(型・API 名前空間・本項)。
+
+- **別系統で共存させる**: 既存 speech(導線上の決め打ち発話)は残し、**新エンドポイント `/v14/concierge_chat`**
+  を別途新設する想定。speech と chat は用途が違う(speech=誘導 / chat=自由対話)ため統合せず共存。
+- **拡張ポイント(実装済み=コメント/ドキュメントのみ)**:
+  - `models_v13.py` `ConciergeSpeechType` に「将来 `chat_reply` を足す想定」をコメントで予約(今は Literal 不変)。
+  - `API_GUIDE.md` `/v14/concierge_speech` 節に `/v14/concierge_chat`(未実装)の共存方針を明記。
+- **前提条件(いずれも未充足 → これが揃うまで着手しない)**:
+  1. **LLM が必要**(自由入力への応答生成)。現行はデモ安定性・出力統制・運用コストのため意図的に LLM 不使用。
+  2. **フロントにチャット UI が必要**(現状は吹き出し表示のみ・自由入力欄なし)。
+  3. **「LLM 不使用」の MTG 合意(6/14・Kawano)の見直しが必要**。合意事項の変更につき要協議。
+- **現状**: 実装・LLM 呼び出し・チャット UI は **一切なし**。テンプレ版(speech)は無変更。Phase 2 以降、
+  上記前提が整った段階で改めて設計する。

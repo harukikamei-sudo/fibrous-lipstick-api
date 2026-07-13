@@ -160,5 +160,6 @@ def next_best(
             p_like=e.p_like, delta_e=e.delta_e,
             score=(1.0 - w) * rn + w * en, r_final_norm=rn, eig_norm=en,
         ))
-    scored.sort(key=lambda s: s.score, reverse=True)
+    # 決定性: 同点スコアは商品ID昇順で安定化(同一入力 → 同一順位を保証)
+    scored.sort(key=lambda s: (-s.score, s.product_id))
     return scored

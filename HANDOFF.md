@@ -3,9 +3,99 @@
 > 新しい Claude (Cursor / Claude Code) セッションで作業を継続するための起点。
 > **このファイルを最初に読んでから、リンク先 docs を参照する**。
 
-最終更新: 2026-06-09 (Opus 4.8 / 1M context) — **個人化層ハードニング + 能動学習 rerank + ピッチ図**
-全テスト: 個人化層 47 件(bayesian 10 / recommend_v2 13 / active_learning 8 / v13_endpoints 16)
-+ v13_flow E2E + 物理系(km 8 / lab 3)。CI: GitHub Actions で Python 3.11/3.12 を自動回転
+最終更新: 2026-07-10 — **Kawano AR 版が届き、フロントを fibrous-lipstick-ui に統合(PR #1)**
+
+## 2026-07-10 セッション(Kawano AR 版 → フロント統合)★最新
+
+**Kawano さんから AR 本実装版が届いた**: 新リポ **`YK-0204/fibrous-lipstick-ui`**(WRITE 権限あり)。
+リアルタイム動画 AR 試着(WebGL シェーダー、合成数式は recolorLips と同一)+ ❤️/✕ ベイズ学習ループ + KEYROOM デザイン。
+詳細評価は LOG エポック 18。
+
+**統合(人間承認済み)**: **Kawano 版を土台**に color-capture feat/v14-recommend の追加分を移植 →
+`feat/v14-merge` ブランチ、CI(tsc)green、**PR #1**: <https://github.com/YK-0204/fibrous-lipstick-ui/pull/1>
+- 移植: SceneStep / 静止画顔プレビュー(recolorLips・一覧比較用。AR とは併用=役割分担)/ /v13/popular(定番も顔に重ねる)/ PC ✓一致 / tsc CI
+- 見送り: shortlist(keep/decide)フロー(AR ❤️/✕ が観測を担う。extras 追加は Kawano さんと後日協議)、Concierge コンポーネント(インライン吹き出しで同等)
+- **⚠️ env**: 本番 Space に `/v14/*`・`/v13/popular` は無い(404)→ フロントの `.env.local` は **v14 プレビュー Space**(`…-api-v14.hf.space`)に向ける。API main マージ後に戻す
+
+**フロントの主戦場は fibrous-lipstick-ui に移行**。color-capture(feat/v14-recommend)は参照用として残置。
+
+**Kawano 報告②「絞り込みカウンタが 5→6 に増える」対応済み(2026-07-10)**: バグでなく competitive set の
+定義上の挙動(生値は 5→10 まで暴れることをライブ実測)。/v14 の `candidate_count` を**表示ラチェット化**
+(min(過去最小, 生値)=単調非増加保証、floor は `session.cc_floor` 相乗り、生値は `candidate_count_raw` 併載)。
+副発見の **spoken_axes 落ちバグ**(/next が session 再構築で毎回 [] に)も修正。テスト6件・CI green・
+プレビュー Space 再デプロイ・ライブ3パターン検証済み。詳細 LOG エポック18。
+
+**✅ PR #1 マージ完了(2026-07-13)**: fibrous-lipstick-ui の main に統合済み(feat/v14-merge は削除)。
+以降フロントの正は **main**。Kawano さんの ①アイコン ③AR ズーム調整はまだ未 push。
+
+**人間/Kawano 待ち**: ① ブラウザ通し確認(Haruki・.env.local を v14 プレビュー Space に)
+② コンシェルジュ文面3パターン ③ API feat/v14 → main マージ計画 ④ 決定後の完了演出デザイン(Kawano さん)
+※ extras{action,kept,decided} は**実装済み**(承認済・❤️/✕/「この色に決める」に付与。LOG エポック18)。
+
+---
+
+## 2026-07-04〜06 セッション(F3 API 化 / 顔プレビュー / プレビュー環境)
+
+**前提**: ブランチは前セッションと同じ(API=`feat/v14` / フロント=`feat/v14-recommend`=YK-0204/color-capture)。
+**API 変更のたびに v14 プレビュー Space を再デプロイ**(下記)。全 CI green。
+
+**実装済(全 CI green)**:
+- **F3 コンシェルジュ発話を API 化**: フロント `conciergeScript.ts`(TS)→ `POST /v14/concierge_speech`(`concierge_speech.py`)へ移植。
+  RN(Kawano)/Next の二重実装を回避。3フェーズ(explore/recommend/decide)。**中間実況の重複防止・予算(最大3)は
+  `session.spoken_axes` に相乗り**(caller は session を往復するだけ・option b 承認)。**TS≡API 全枠パリティテスト**(13件)。
+- **コンシェルジュ生 pair_id 漏れ修正**: 「さっき**wv_09_sweet_vs_classy**。だからこれ」→ `_PAIR_LABELS` で
+  「さっき「甘い vs クラシー」で選んだのが効いてる」に。未知値は軸ラベルにフォールバック。TS/API 両方。
+- **顔全体プレビューに統一**: 唇クロップ断片 → **顔写真全体 + 唇だけ再着色**(ペア比較・推薦・定番すべて)。
+  `SampleResult.face`(顔画像~720px + 唇ポリゴン)+ `renderFaceLipPreview`(ポリゴンからマスク再構築 → recolorLips 流用)。
+  lipDetection 無変更(既に顔座標系の mask/polygon を返していた)。face 無ければクロップに fallback(後方互換)。
+- **写真アップロード対応**: カメラ不使用でも写真選択 → 1280px ダウンスケール → 同じ detectLips 経路。
+- **唇プレビュー自然化(recolorLips)**: マスク縁フェザリング(box blur 羽化α)+ 不透明度 `LIP_OPACITY=0.85` +
+  L 偏差保持。定数化(`LIP_TEXTURE_STRENGTH/OPACITY/FEATHER_RADIUS`)。
+- **パーソナルカラー表示**: RecommendStep に `pc_season` + カード `catalog_pc_tags` +「✓一致」。
+- **みんなの定番も顔プレビュー**: `GET /v13/popular` に任意 `lip_l/lip_a/lip_b(+mu_thickness)` を追加 →
+  各定番に `effective_lab`(K-M 塗布後 Lab)を付与、定番も顔に重ねる。**ランキングは不変**。test 18件。
+- **recommend「計算中」固定バグ修正**: 取得 effect の `finally` を無条件 `setLoading(false)` に + 導入発話 concierge を fire-and-forget。
+
+**プレビュー環境(本番非汚染)**: feat/v14 を **別 HF Space** `Tamable/fibrous-lipstick-api-v14`
+(`https://tamable-fibrous-lipstick-api-v14.hf.space`)にデプロイ。本番 Space(main)・main ブランチ・本番 Vercel env は無変更。
+- **デプロイ手順(API 変更のたびに実施)**: HF は >1MB PNG を履歴ごと拒否 → **orphan 単一コミット(feat/v14 ツリー − 全図PNG・履歴なし)**を
+  `git push hf-v14 <orphan>:main --force`。`git rm` の新コミットは過去 blob が履歴に残り弾かれる → orphan で履歴を捨てるのが要点。
+- フロントは `color-capture/.env.production` の `NEXT_PUBLIC_LIP_API_URL` を上記 Space に向ける(**★ main マージ前に必ず削除**)。
+
+**人間/Kawano 待ち(このセッション時点)**: ① F3 コンシェルジュ **文面3パターン**(現行は Haruki 確定の暫定版)
+② Vercel プレビュー deploy(`npx vercel` or dashboard・env は .env.production で自動)③ 実 PAIR_BANK 再設計 ④ Phase2 実ユーザー再検証。
+
+---
+
+## 2026-06-15〜29 セッション(v14 推薦体験改修)
+
+**ブランチ**: API=`feat/v14`(origin harukikamei-sudo・main より 39 先行 / main は不変)、
+フロント=`feat/v14-recommend`(別 repo **YK-0204/color-capture**・`~/Desktop/color-capture/`)。
+
+**実装済(全 CI green)**:
+- API: シーン事前分布(A1)/ 推薦理由 reasons(A2)/ 絞り込みカウンタ candidate_count(A2-fix)/
+  逐次ペア比較 `/v14/pair_compare/{start,next}`(A3・最大EIG・effective_lab)/ 全体ランキング `/v13/popular` /
+  `Observation.extras`(F4-fix・ベイズ更新不使用)。テスト: v13_endpoints 17 + v14_flow + scene_priors 等。
+- フロント: SceneStep(F1)/ recolorLips 純関数(F2)/ PairCompareStep v14化+唇プレビュー(F2本体)/
+  Concierge 器+選択ロジック(F3・文面は Kawano 3パターン待ち)/ RecommendStep 購入フロー shortlist(F4-fix)。
+  color-capture に CI(`ci.yml`・tsc --noEmit)追加。
+
+**C/D 確定(人間承認・LOG エポック16)**: N_PAIRS=8 / KAPPA=0.65 / β_BT=0.25 / x20=20軸。
+中核成果=**scene+7 で flat+10 と hit 同等(問数3問削減)**。
+
+**collapse 調査の決着**: 似た合成ペルソナ(mina/aya)で TOP5 が同一化する現象を発見 →
+diag/pairsep/v1/v2/reasons の系列で「**色も好みも本質的に同一=人工的 edge、アルゴリズム欠陥でない**」と確定。
+**戦略(A)採用**(色では分けない・差別化は reasons+shortlist・色ペア据え置き)。(B)=実ユーザーで Phase2 再検証。
+協議資料: `KAWANO_V14_REVIEW.md` + `KAWANO_PAIRS_NOTE.md` + 図 `scripts/figures/kawano_*.png`。
+
+**運用メモ(重要)**: このマシンの sandbox は **skimage import / app import / tsc / npm が Gatekeeper でハング**。
+→ 検証は CI 経由(`test.yml` の workflow_dispatch `a4` ジョブ + color-capture `ci.yml`)。`openapi.json` も
+CI で再生成済み(`a4` ジョブ内で `app.openapi()` dump、6/15版の陳腐化解消)。詳細は [[feedback_macos_gatekeeper_ci]]。
+
+**人間/Kawano 待ち**: ① 色5ペア据え置き追認 ② F3 コンシェルジュ3パターン文面 ③ フロント `gen:api-types`
+再実行(新 openapi.json で)④(将来)PAIR_BANK 明度軸 / Phase2 実ユーザー検証。
+
+---
 
 ## 2026-06-05〜09 セッション(個人化層ハードニング + ピッチ図)
 

@@ -583,6 +583,50 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/recommend \
 - `beta_max`: セレンディピティ最大係数(既定 5.0)
 - `familiarity_weights`: [w1, w2, w3](既定 [4, 3, 2])
 
+### `reasons`(推薦理由・A2)
+
+各 `results[*]` に推薦理由の構造化データ `reasons` が付く(**文章化はフロントの責務**。
+API は数値・ラベル・来歴のみ返す)。読まない既存クライアントは無視できる(後方互換)。
+
+```json
+"reasons": {
+  "color_percentile": 0.92,   // 色の似合い順位率(1=プール内で最も似合う)
+  "pref_percentile": 0.78,    // 好み一致の順位率(1=最も好みに一致)
+  "scene_match": false,       // シーン選択軸への合致(A1 配線後に有効。現状 false 固定)
+  "top_axes": [               // 好み起点:正寄与かつ確信のある軸(最大2)
+    {"axis": "sheer", "label": "透け感", "contribution": 0.41, "evidence": []}
+  ],
+  "product_traits": [         // 商品起点:値が突出した軸(is_系除く・top_axes と重複除く、最大2)
+    {"axis": "blur", "label": "ふんわり感"}
+  ]
+}
+```
+
+- **percentile はパーセンタイル方式**(候補プール内の順位率・絶対閾値なし=`is_serendipity` と
+  同じ自己校正の哲学)。スコア計算(`r_final`)には一切影響しない派生指標。
+- **top_axes** は `μ_pref[k]·x20[k] > 0` かつ `theta_pref.var[k] ≤ RHO·TAU2_PREF`(RHO=0.5、
+  「確信のある軸」)のみ。is_系バイナリ軸とその連続プロキシ(is_gloss↔glossy 等)が拮抗する
+  場合は連続軸を優先表示(表示規則のみ・スコア無影響)。※ RHO はフロント発話トリガーと同値共有。
+- **evidence**(その軸の事後分散を最も縮めた観測の pair_id・最大2件)は、ペア比較適用時に
+  `UserState.pref_evidence`(軸名→pair_id 列)として構築され、reasons がそれを充填する。
+  精度寄与 `x²/σ²` の大きいペアを記録(更新式は不変)。`pref_evidence` が無ければ空配列。
+- 順位の同点は商品ID昇順で安定化済み(同一入力 → 同一 TOP-N=決定性)。
+
+### `candidate_count` / `catalog_size`(絞り込みカウンタ・A2-fix)
+
+レスポンス直下に**残候補数**を返す(診断UIの「◯色 → … → 5色」表示用)。
+
+- `catalog_size`: 候補プール(`km_table`)の総数。「◯色から」の起点。
+- `candidate_count`: **competitive set 方式**=現時点の事後で全候補をスコアリングし、
+  「TOP-N 最下位スコアから `margin·(1位−N位)` 以内にいる候補の数」(margin=0.15)。
+  事後が尖るほどスコアが分離して**減る**(絞り込みの進行)。退化(全同値)時は TOP-N 件数。
+  **表示専用の派生指標で TOP-N 選定・スコアには不使用**。
+  ※ 当初設計の「R_final>中央値の個数」は中央値分割が常に≈N/2で減らないため破棄・置換。
+- **/v14 ではラチェット済み(2026-07-10)**: competitive set は事後のスナップショットで
+  1 問ごとの単調減少は保証されない(5→6 に増え得る)ため、/v14 の start/next が返す
+  `candidate_count` は `min(過去最小, 今回生値)`(`session.cc_floor` 相乗り)で**単調非増加を保証**。
+  生値は `candidate_count_raw` に併載(診断用)。/v13/recommend の `candidate_count` は生値のまま。
+
 ---
 
 ## v1.3-④ POST /v13/update_user
@@ -635,6 +679,90 @@ curl -X POST https://tamable-fibrous-lipstick-api.hf.space/v13/update_user \
   }
 }
 ```
+
+---
+
+## v14 追加エンドポイント(2026-06 / `feat/v14`)
+
+### POST `/v14/pair_compare/start` — 逐次ペア比較の開始
+
+シーン+PC 事前で初期化し、**最大 EIG の first_pair** を返す。各ペアの left/right に
+`effective_lab`(唇に塗った想定 Lab)が付くのが v13 との差。セッションはクライアント往復方式。
+
+```bash
+curl -sX POST https://tamable-fibrous-lipstick-api.hf.space/v14/pair_compare/start \
+  -H 'Content-Type: application/json' \
+  -d '{"lip_lab":{"L":62,"a":22,"b":12},"scenes":["school","friends"],"pc_season":"ブルベ夏"}'
+# → {session, n_pairs_total:8, first_pair:{pair_id,pair_type,left/right:{...,effective_lab}}, candidate_count, catalog_size, candidate_count_raw}
+```
+
+### POST `/v14/pair_compare/next` — 選択 → 更新 → 次のペア
+
+選択を観測としてベイズ更新し、残問あれば次の最大 EIG ペアを返す。**固定 N=8 問で `done:true`**。
+
+```bash
+curl -sX POST .../v14/pair_compare/next \
+  -d '{"session":<前レスポンスの session>,"pair_id":"color_01_bright_vs_deep","chose":"left"}'
+# → {session, done, next_pair|null, theta_snapshot:{pref_mu,pref_var,top_shrunk_axis}, candidate_count(単調非増加・ラチェット済), candidate_count_raw}
+```
+- `theta_snapshot`: 中間実況用(コンシェルジュが「透け感が好きみたいだね」)。同一ペアは二度出さない。
+
+### GET `/v13/popular` — みんなの定番(ユーザー非依存)
+
+```bash
+# 基本(ランキングのみ)
+curl -s 'https://tamable-fibrous-lipstick-api.hf.space/v13/popular?top_n=5'
+# → {catalog_size, method, results:[{product_id,name,line_category,image_url,lab,representativeness,effective_lab:null}]}
+
+# 本人の唇に重ねるプレビュー用: lip_lab(+塗り厚 mu_thickness)を渡すと各定番に effective_lab が付く
+curl -s '.../v13/popular?top_n=5&lip_l=62&lip_a=22&lip_b=12&mu_thickness=0.5'
+# → results[*].effective_lab:{L,a,b}(K-M 塗布後 Lab)。★これを唇に合成すれば定番も顔プレビューできる
+```
+- MVP は売上/レビューが無いため **カタログ代表性(中央 Lab=median centroid への近さ)で代用**(本番は売上に差替)。決定的。
+- **`lip_l/lip_a/lip_b`(任意・3つ揃った時のみ有効)+ `mu_thickness`(既定 0.5)**: 渡すと TOP-N 各定番に
+  `km.compute_applied_lab` の **`effective_lab`(本人の唇に塗った塗布後 Lab)** を付与。未指定なら `effective_lab:null`。
+  **ランキング(順序)はユーザー非依存で不変**(effective_lab は付加情報のみで並べ替えに不使用)。
+
+### `Observation.extras`(F4-fix・任意)
+
+`/v13/update_user` の観測に `extras:{action,kept,decided}` 等を付与可。**ベイズ更新には未使用**=Phase 2 のデータ収集用。
+`source_pair_id` も観測の来歴(reasons の evidence)用に追加済み。
+
+### POST `/v14/concierge_speech` — コンシェルジュ(妖精)の発話生成
+
+発話生成をバックエンドに一本化(RN/Next の二重実装回避・6/29 方針)。既存の reasons(A2)/
+theta_snapshot(A3・session 内)を**日本語文面に変換するだけ**。フロントは返った文面を吹き出しに出すだけ。
+
+```bash
+# explore(ペア比較中の中間実況): session をそのまま渡す(spoken_axes=実況済み軸の状態が相乗り)
+curl -sX POST .../v14/concierge_speech \
+  -d '{"phase":"explore","session":<pair_compare/next が返した session>,"step":"pair_compare"}'
+# → {speech:{type:"axis_realization"|"step_intro", text}, session:<spoken_axes 追記版・次ターンへ持ち回る>}
+
+# recommend(推薦理由の口語化)
+curl -sX POST .../v14/concierge_speech \
+  -d '{"phase":"recommend","reasons":<recommend の results[].reasons>,"is_serendipity":false}'
+# → {speech:{type:"reason_hybrid"|"reason_user"|"reason_product"|"serendipity_offer"|"step_intro", text}}
+
+# decide(確認/終端)
+curl -sX POST .../v14/concierge_speech -d '{"phase":"decide","is_final":true}'
+# → {speech:{type:"decision_final", text}}
+```
+
+- **状態管理**: 中間実況の重複防止・予算(最大3回)は `session.spoken_axes` に相乗り(caller は session を往復するだけ・中身を知らなくてよい)。spoken_axes が要るのは explore のみ。
+- **軸実況は μ_pref>0(好意方向)のみ**・確信(var ≤ RHO·TAU2)した軸を1つ。否定方向は黙る(Phase 2)。
+- 文面は **Haruki 作成の確定版**(上品なホテルのコンシェルジュ風・ですます・絵文字 ✨👍👀・対象 Mina)。名前は `{name}` を「名前+さん」に解決、無ければ「あなた」(現状 name フィールド無=実質「あなた」)。ロジック・文面は `conciergeScript.ts` と同一(TS≡API 全枠パリティテスト有)。
+
+#### 【将来拡張・未実装】双方向チャット相談機能 `POST /v14/concierge_chat`(Phase 2+)
+
+現行 `/v14/concierge_speech` は **一方通行・テンプレ**(状態 → 定型文、LLM 不使用)。将来ユーザーが自由入力で
+相談できる **双方向チャット**(例:「学校でもバレない?」「これ落ちにくい?」にその場で答える)を足す場合は、
+**別エンドポイント `/v14/concierge_chat` を新設**し、speech 系統とは **別系統で共存**させる想定
+(speech=導線上の決め打ち発話 / chat=自由対話)。返答種別は将来 `ConciergeSpeechType` に `chat_reply` を足す想定
+(models_v13.py にコメントで予約済み)。**前提**: LLM 必須 / フロントにチャット UI 必須 / 「LLM 不使用」の MTG 合意の
+見直しが必要 → 詳細は [LOG.md](LOG.md) 「将来像」。※現時点は**未実装・拡張余地の明示のみ**。
+
+> v14 の全フィールド定義は [KAWANO_INTERFACE.md](KAWANO_INTERFACE.md) §4.6/§4.7、最新 OpenAPI は `openapi.json`(CI 再生成済み)。
 
 ---
 

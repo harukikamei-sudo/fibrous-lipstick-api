@@ -1,0 +1,2969 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fibrous Lipstick API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/extract_lab": {
+      "post": {
+        "summary": "Extract Lab Endpoint",
+        "operationId": "extract_lab_endpoint_extract_lab_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractLabRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractLabResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/extract_lab_batch": {
+      "post": {
+        "summary": "Extract Lab Batch Endpoint",
+        "operationId": "extract_lab_batch_endpoint_extract_lab_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractLabBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractLabBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/estimate_s": {
+      "post": {
+        "summary": "Estimate S Endpoint",
+        "operationId": "estimate_s_endpoint_estimate_s_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateSRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimateSResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compute_km_table": {
+      "post": {
+        "summary": "Compute Km Table Endpoint",
+        "operationId": "compute_km_table_endpoint_compute_km_table_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputeKmTableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputeKmTableResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recommend": {
+      "post": {
+        "summary": "Recommend Endpoint",
+        "operationId": "recommend_endpoint_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v13/pair_compare/init": {
+      "get": {
+        "summary": "V13 Pair Compare Init",
+        "description": "Part II 強制ペア比較の 10 ペアを返す。\n\ncaller(Kawanoさん)はユーザーに各ペアの left/right を提示し、選択を集めて\n`/v13/pair_compare/apply` に送る。ペアの中身は MVP では仮データ。",
+        "operationId": "v13_pair_compare_init_v13_pair_compare_init_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairInitResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v13/pair_compare/apply": {
+      "post": {
+        "summary": "V13 Pair Compare Apply",
+        "description": "ペア選択 → θ_color/θ_pref/θ_explore/θ_thickness の初期事前分布。\n\ncaller は返り値の 4 つの分布をそのまま users スプレッドシート等に保存し、\n以後のリクエストでは UserState の中に詰めて送る。",
+        "operationId": "v13_pair_compare_apply_v13_pair_compare_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairApplyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v13/update_user": {
+      "post": {
+        "summary": "V13 Update User",
+        "description": "既存 user state + 新観測 → 更新後の user state を返す。\n\n観測ソース: pair_color / pair_worldview / dialog / behavior /\n            ar_view_like / ar_view_dislike(設計書 §7.1)。\ncaller は返り値の UserState で自前ストレージを上書き保存する。",
+        "operationId": "v13_update_user_v13_update_user_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateUserResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v13/recommend": {
+      "post": {
+        "summary": "V13 Recommend",
+        "description": "設計書 Part IV/VI 統合スコアで TOP-N。\n\n入力: UserState のみで OK(km_table は省略可、内部で生成)。\n出力: 各商品の effective_Lab / f / familiarity / R_final 含む TOP-N。",
+        "operationId": "v13_recommend_v13_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendV2Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendV2Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v14/pair_compare/start": {
+      "post": {
+        "summary": "V14 Pair Compare Start",
+        "description": "逐次ペア比較の開始。シーン+PC 事前で初期化し、最初の最大EIGペアを返す。\n\nsession_state(=UserState 相当)はクライアント往復方式(サーバ側に保存しない)。",
+        "operationId": "v14_pair_compare_start_v14_pair_compare_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/V14StartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V14StartResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v14/pair_compare/next": {
+      "post": {
+        "summary": "V14 Pair Compare Next",
+        "description": "選択を観測としてベイズ更新 → 残問あれば次の最大EIGペアを返す。固定 N 問で done。",
+        "operationId": "v14_pair_compare_next_v14_pair_compare_next_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/V14NextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V14NextResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v13/popular": {
+      "get": {
+        "summary": "V13 Popular",
+        "description": "ユーザー非依存の「みんなの定番」ランキング(F4-fix #5 / フロントは参照枠として併設)。\n\n狙い: 診断ごとに動くパーソナライズ結果の隣に「不動の共通基準」を置き、自分の結果が\n極端に浮いていないかをユーザー自身が確認できるようにする(MTG 合意)。\n\n代表性(representativeness)の算出 — MVP は売上/レビューが無いため**カタログ代表性で代用**:\n  代表性 = カタログ中央 Lab(各成分の median = centroid)への **Euclidean 距離が小さいほど高い**。\n  = 「カタログの真ん中にいる=多くの人に汎用的に使える色」という近似。\n  本番では売上数・レビュー数・在庫回転などに差し替える前提(この近似は暫定)。\n決定的: 同点は product_id 昇順。ユーザー状態に一切依存しない静的ランキング。",
+        "operationId": "v13_popular_v13_popular_get",
+        "parameters": [
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "title": "Top N"
+            }
+          },
+          {
+            "name": "lip_l",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip L"
+            }
+          },
+          {
+            "name": "lip_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip A"
+            }
+          },
+          {
+            "name": "lip_b",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lip B"
+            }
+          },
+          {
+            "name": "mu_thickness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 0.5,
+              "title": "Mu Thickness"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopularResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v14/concierge_speech": {
+      "post": {
+        "summary": "V14 Concierge Speech",
+        "description": "コンシェルジュ(妖精)の発話を生成(F3 を API 化・RN/Next の二重実装回避)。\n\n既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。\n発話ロジックは `concierge_speech.py`(conciergeScript.ts の忠実移植)。\nexplore は session を往復(中間実況の重複/予算は session.spoken_axes に相乗り)。",
+        "operationId": "v14_concierge_speech_v14_concierge_speech_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConciergeSpeechRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConciergeSpeechResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/evaluate": {
+      "post": {
+        "summary": "Evaluate Endpoint",
+        "description": "予測(論文ベース)と カタログ PC タグの一致率を測る。\n\npc_season=expected_pc で内部 /recommend → **タグ付き商品だけで TOP_n を埋める**\n(タグ空はスキップ。順位は下の商品で繰り上げ=バックフィル) → match_rate =\nmatched / TOP_n。「サイト編集者がそもそも判定していない商品」を分母に含めない\n純粋精度。MVP 合格ライン 0.70。",
+        "operationId": "evaluate_endpoint_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BatchProduct": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "image_url"
+        ],
+        "title": "BatchProduct"
+      },
+      "ComputeKmTableRequest": {
+        "properties": {
+          "lip_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "唇地肌の Lab(下地)"
+          },
+          "product_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "商品フル発色 Lab(R∞)"
+          },
+          "line_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tint",
+                  "gloss",
+                  "matte",
+                  "velvet",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Category",
+            "description": "仕上げタイプ"
+          },
+          "products": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KmBatchProduct"
+                },
+                "type": "array",
+                "maxItems": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Products",
+            "description": "最大50件"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines",
+            "description": "{line_id: [S_R,S_G,S_B]}。省略時はプリセットにフォールバック"
+          },
+          "t_steps": {
+            "type": "integer",
+            "maximum": 101.0,
+            "minimum": 2.0,
+            "title": "T Steps",
+            "description": "厚み段階数",
+            "default": 21
+          }
+        },
+        "type": "object",
+        "required": [
+          "lip_lab"
+        ],
+        "title": "ComputeKmTableRequest",
+        "description": "単品モードとバッチモードの 2 通り。どちらか片方のみ指定する。\n\n- 単品モード: product_lab + line_category\n- バッチモード: products(+ 任意で lines)"
+      },
+      "ComputeKmTableResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "'single' か 'batch'"
+          },
+          "table": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Table",
+            "description": "各商品 {id, line_id, s, s_source, applied:[{t,L,a,b}, …]}"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "table"
+        ],
+        "title": "ComputeKmTableResponse"
+      },
+      "ConciergeSpeech": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "step_intro",
+              "axis_realization",
+              "reason_user",
+              "reason_product",
+              "reason_hybrid",
+              "serendipity_offer",
+              "decision_confirm",
+              "decision_final"
+            ],
+            "title": "Type"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "title": "ConciergeSpeech"
+      },
+      "ConciergeSpeechRequest": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "explore",
+              "recommend",
+              "decide"
+            ],
+            "title": "Phase"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/V14Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "step_intro 用のステップ名(例 capture_wrist)"
+          },
+          "reasons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendReasons"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_serendipity": {
+            "type": "boolean",
+            "title": "Is Serendipity",
+            "default": false
+          },
+          "scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenes"
+          },
+          "is_final": {
+            "type": "boolean",
+            "title": "Is Final",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase"
+        ],
+        "title": "ConciergeSpeechRequest"
+      },
+      "ConciergeSpeechResponse": {
+        "properties": {
+          "speech": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConciergeSpeech"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/V14Session"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ConciergeSpeechResponse"
+      },
+      "EstimateSRequest": {
+        "properties": {
+          "full_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "フル発色の Lab(R∞ とみなす)"
+          },
+          "light_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "t=t_light で観測した薄付き Lab"
+          },
+          "t_light": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "T Light",
+            "description": "薄付きの厚み t",
+            "default": 0.3
+          },
+          "substrate_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "薄付き観測時の下地 Lab。省略時は白基板を仮定"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_lab",
+          "light_lab"
+        ],
+        "title": "EstimateSRequest"
+      },
+      "EstimateSResponse": {
+        "properties": {
+          "s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "S",
+            "description": "ライン散乱係数 S(R,G,B チャネル)"
+          },
+          "k_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "K S",
+            "description": "商品 K/S 比(R,G,B チャネル)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "s",
+          "k_s"
+        ],
+        "title": "EstimateSResponse"
+      },
+      "EvaluateRequest": {
+        "properties": {
+          "lip_lab": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "expected_pc": {
+            "type": "string",
+            "enum": [
+              "イエベ春",
+              "イエベ秋",
+              "ブルベ夏",
+              "ブルベ冬"
+            ],
+            "title": "Expected Pc"
+          },
+          "t": {
+            "type": "number",
+            "maximum": 5.0,
+            "exclusiveMinimum": 0.0,
+            "title": "T",
+            "default": 1.0
+          },
+          "top_n": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "lip_lab",
+          "expected_pc"
+        ],
+        "title": "EvaluateRequest"
+      },
+      "EvaluateResponse": {
+        "properties": {
+          "expected_pc": {
+            "type": "string",
+            "title": "Expected Pc"
+          },
+          "top_n": {
+            "type": "integer",
+            "title": "Top N",
+            "description": "実際に評価できた件数(タグ付き商品で埋めた TOP_n)"
+          },
+          "matched_count": {
+            "type": "integer",
+            "title": "Matched Count",
+            "description": "catalog_pc_tags が expected_pc または 'イエベ・ブルベ問わず' を含む件数"
+          },
+          "match_rate": {
+            "type": "number",
+            "title": "Match Rate",
+            "description": "matched_count / top_n。タグ空商品は分母から除外済み"
+          },
+          "interpretation": {
+            "type": "string",
+            "title": "Interpretation",
+            "description": "'good' (>=0.7) / 'acceptable' (>=0.5) / 'poor'"
+          },
+          "n_empty_tag_skipped": {
+            "type": "integer",
+            "title": "N Empty Tag Skipped",
+            "description": "TOP_n を埋めるために飛ばした「タグ空商品」の件数(透明性のため)",
+            "default": 0
+          },
+          "details": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_pc",
+          "top_n",
+          "matched_count",
+          "match_rate",
+          "interpretation",
+          "details"
+        ],
+        "title": "EvaluateResponse"
+      },
+      "ExtractLabBatchRequest": {
+        "properties": {
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/BatchProduct"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Products",
+            "description": "最大50件"
+          }
+        },
+        "type": "object",
+        "required": [
+          "products"
+        ],
+        "title": "ExtractLabBatchRequest"
+      },
+      "ExtractLabBatchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "ExtractLabBatchResponse"
+      },
+      "ExtractLabRequest": {
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "title": "Image Url",
+            "description": "商品スウォッチ画像の URL"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_url"
+        ],
+        "title": "ExtractLabRequest"
+      },
+      "ExtractLabResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "auto_high",
+              "auto_low",
+              "excluded"
+            ],
+            "title": "Status"
+          },
+          "lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "notes"
+        ],
+        "title": "ExtractLabResponse"
+      },
+      "GaussianLab": {
+        "properties": {
+          "mu": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "var": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "各成分の分散 σ²(>0)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mu",
+          "var"
+        ],
+        "title": "GaussianLab",
+        "description": "Lab 3次元独立ガウス: 各成分 N(μ_j, σ²_j)"
+      },
+      "GaussianScalar": {
+        "properties": {
+          "mu": {
+            "type": "number",
+            "title": "Mu"
+          },
+          "var": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Var",
+            "description": "分散 σ²"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mu",
+          "var"
+        ],
+        "title": "GaussianScalar",
+        "description": "1次元ガウス: N(μ, σ²)"
+      },
+      "GaussianVec20": {
+        "properties": {
+          "mu": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "Mu"
+          },
+          "var": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "Var"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mu",
+          "var"
+        ],
+        "title": "GaussianVec20",
+        "description": "20次元独立ガウス(pref ベクトル用)"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KMTableRow": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/LabValue"
+            },
+            "type": "array",
+            "maxItems": 21,
+            "minItems": 21,
+            "title": "Applied",
+            "description": "t=0.00, 0.05, ..., 1.00 の21段(設計書 §5.3)"
+          },
+          "x20": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "X20"
+          },
+          "pc_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pc Tags",
+            "description": "答え合わせ用"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "line_category": {
+            "type": "string",
+            "title": "Line Category",
+            "default": ""
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url",
+            "description": "商品スウォッチ画像 URL(Kawanoさん AR の表示用)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "applied",
+          "x20"
+        ],
+        "title": "KMTableRow",
+        "description": "ある (user, product) ペアの 21 段階 applied_Lab。\n\nGAS 側で /compute_km_table の結果を保存しておき、/recommend/v2 で\n丸ごと送る。サーバー側にユーザー毎テーブルを置かない設計。"
+      },
+      "KmBatchProduct": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "L": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "L"
+          },
+          "a": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A"
+          },
+          "b": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B"
+          },
+          "k_s": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "K S",
+            "description": "K/S 比。省略時は L/a/b から算出"
+          },
+          "line_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Id",
+            "description": "lines の参照キー"
+          },
+          "line_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tint",
+                  "gloss",
+                  "matte",
+                  "velvet",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Category",
+            "description": "S プリセット参照用"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "KmBatchProduct"
+      },
+      "LabValue": {
+        "properties": {
+          "L": {
+            "type": "number",
+            "title": "L"
+          },
+          "a": {
+            "type": "number",
+            "title": "A"
+          },
+          "b": {
+            "type": "number",
+            "title": "B"
+          }
+        },
+        "type": "object",
+        "required": [
+          "L",
+          "a",
+          "b"
+        ],
+        "title": "LabValue"
+      },
+      "Observation": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "pc_diagnosis",
+              "pair_color",
+              "pair_worldview",
+              "dialog",
+              "behavior",
+              "ar_view_like",
+              "ar_view_dislike"
+            ],
+            "title": "Source"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "source_pair_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pair Id",
+            "description": "この観測が由来するペア比較の pair_id(あれば)。θ_pref の来歴(pref_evidence)構築に使う。AR 観測等では None。"
+          },
+          "observed_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "θ_color 更新用。AR の場合は applied_Lab(K-M 結果)、ペア/行動の場合は商品のマスストーン Lab"
+          },
+          "observed_x20": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 20,
+                "minItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed X20",
+            "description": "θ_pref 更新用。商品の c.x_20 ベクトル(ペア)もしくは対話入力ベクトル"
+          },
+          "thickness": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thickness",
+            "description": "θ_thickness 更新用。AR スライダー値(0〜1)"
+          },
+          "is_serendipity": {
+            "type": "boolean",
+            "title": "Is Serendipity",
+            "description": "セレンディピティ提示への反応か(θ_explore 更新トリガ)",
+            "default": false
+          },
+          "y": {
+            "type": "number",
+            "title": "Y",
+            "description": "観測の符号。like=+1, dislike=-1, ペアの選ばれた側=+1(基本+1で運用)",
+            "default": 1.0
+          },
+          "viewed_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewed Seconds"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "extras": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extras",
+            "description": "拡張観測メタ(F4-fix #4)。例 {action:'view'|'keep'|'decide', kept:bool, decided:bool}。ベイズ更新には未使用=Phase2 のデータ収集用に保持するのみ。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "Observation",
+        "description": "設計書 §9.3 + §7.1 の観測経路を統一表現。\n\n- 色観測(Lab): pair_color / behavior / ar_view_like で使用\n- x_20 観測: pair_worldview / dialog で使用\n- thickness 観測: ar_view_like のみで使用\n- explore 観測: serendipity 経由の ar_view_like/dislike で使用"
+      },
+      "PairApplyRequest": {
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/PairChoice"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Choices"
+          },
+          "pc_season": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "イエベ春",
+                  "ブルベ夏",
+                  "イエベ秋",
+                  "ブルベ冬"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Season",
+            "description": "Part I の PC 結果(あれば)。色事前は PC 由来の μ_color_0 とペア由来の観測を合成した posterior になる"
+          },
+          "warmness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warmness",
+            "description": "Part I の warmness 値(σ²_color_0 のシグモイドに使う)"
+          },
+          "scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenes",
+            "description": "シーン選択(school/friends/date/special)。θ_pref の事前を scene_priors で構築する(A1)。未指定なら従来どおり flat 事前(完全後方互換)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "choices"
+        ],
+        "title": "PairApplyRequest",
+        "description": "10問の選択結果を事前分布に変換する。\n\nstate は持たないので、ペア定義(=サーバー側 PAIR_BANK)+ 選択を受け取って\nμ_0/σ²_0 を返す。GAS は返り値を users シートに書き込む。"
+      },
+      "PairApplyResponse": {
+        "properties": {
+          "theta_color": {
+            "$ref": "#/components/schemas/GaussianLab"
+          },
+          "theta_pref": {
+            "$ref": "#/components/schemas/GaussianVec20"
+          },
+          "theta_explore": {
+            "$ref": "#/components/schemas/GaussianScalar"
+          },
+          "theta_thickness": {
+            "$ref": "#/components/schemas/GaussianScalar"
+          },
+          "n_color_obs": {
+            "type": "integer",
+            "title": "N Color Obs"
+          },
+          "n_worldview_obs": {
+            "type": "integer",
+            "title": "N Worldview Obs"
+          },
+          "pref_evidence": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Pref Evidence",
+            "description": "θ_pref 軸別の来歴(軸名→縮小寄与の大きい pair_id 列)。caller は UserState.pref_evidence に格納して持ち回る(A2)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "theta_color",
+          "theta_pref",
+          "theta_explore",
+          "theta_thickness",
+          "n_color_obs",
+          "n_worldview_obs"
+        ],
+        "title": "PairApplyResponse",
+        "description": "事前分布構築結果。GAS は users シートに保存。"
+      },
+      "PairChoice": {
+        "properties": {
+          "pair_id": {
+            "type": "string",
+            "title": "Pair Id"
+          },
+          "chose": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right"
+            ],
+            "title": "Chose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pair_id",
+          "chose"
+        ],
+        "title": "PairChoice",
+        "description": "ユーザーが1ペアで選んだ側。"
+      },
+      "PairInitResponse": {
+        "properties": {
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/PairQuestion"
+            },
+            "type": "array",
+            "title": "Pairs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pairs"
+        ],
+        "title": "PairInitResponse"
+      },
+      "PairItem": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "lab": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "x20": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "X20"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "lab",
+          "x20"
+        ],
+        "title": "PairItem",
+        "description": "ペア比較で提示する1選択肢。"
+      },
+      "PairQuestion": {
+        "properties": {
+          "pair_id": {
+            "type": "string",
+            "title": "Pair Id"
+          },
+          "pair_type": {
+            "type": "string",
+            "enum": [
+              "color",
+              "worldview"
+            ],
+            "title": "Pair Type"
+          },
+          "left": {
+            "$ref": "#/components/schemas/PairItem"
+          },
+          "right": {
+            "$ref": "#/components/schemas/PairItem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pair_id",
+          "pair_type",
+          "left",
+          "right"
+        ],
+        "title": "PairQuestion",
+        "description": "1ペア=2選択肢 + メタ情報。"
+      },
+      "PairV14": {
+        "properties": {
+          "pair_id": {
+            "type": "string",
+            "title": "Pair Id"
+          },
+          "pair_type": {
+            "type": "string",
+            "enum": [
+              "color",
+              "worldview"
+            ],
+            "title": "Pair Type"
+          },
+          "left": {
+            "$ref": "#/components/schemas/PairV14Side"
+          },
+          "right": {
+            "$ref": "#/components/schemas/PairV14Side"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pair_id",
+          "pair_type",
+          "left",
+          "right"
+        ],
+        "title": "PairV14"
+      },
+      "PairV14Side": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "lab": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "x20": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "X20"
+          },
+          "effective_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "lip_lab + μ_thickness の K-M 塗布後 Lab(フロントが本人の唇を再着色)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "lab",
+          "x20",
+          "effective_lab"
+        ],
+        "title": "PairV14Side",
+        "description": "v14 ペアの片側。effective_lab(唇に塗った想定の色)を含むのが v13 との差。"
+      },
+      "PopularItem": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "line_category": {
+            "type": "string",
+            "title": "Line Category"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "lab": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "representativeness": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Representativeness",
+            "description": "定番度(カタログ中心 Lab への近さ。1=最も汎用的)"
+          },
+          "effective_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lip_lab(+mu_thickness)を渡した場合の K-M 塗布後 Lab。フロントが本人の唇に重ねる用。未指定なら None(ランキングはユーザー非依存のまま)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "line_category",
+          "lab",
+          "representativeness"
+        ],
+        "title": "PopularItem"
+      },
+      "PopularResponse": {
+        "properties": {
+          "catalog_size": {
+            "type": "integer",
+            "title": "Catalog Size"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "description": "代表性の算出方法(MVP=median Lab centroid 距離)"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/PopularItem"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "catalog_size",
+          "method",
+          "results"
+        ],
+        "title": "PopularResponse"
+      },
+      "ProductTrait": {
+        "properties": {
+          "axis": {
+            "type": "string",
+            "title": "Axis",
+            "description": "商品側で値が突出している x20 軸名"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "日本語ラベル(catalog_x20.AXIS_LABELS_JA)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "axis",
+          "label"
+        ],
+        "title": "ProductTrait",
+        "description": "推薦理由の「商品起点の特徴」(その商品で x20 値が突出している軸)。"
+      },
+      "ReasonAxis": {
+        "properties": {
+          "axis": {
+            "type": "string",
+            "title": "Axis",
+            "description": "catalog_x20.AXIS_NAMES の軸名"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "日本語ラベル(catalog_x20.AXIS_LABELS_JA)"
+          },
+          "contribution": {
+            "type": "number",
+            "title": "Contribution",
+            "description": "μ_pref[k]·x20[k](正寄与のみ)"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "この軸の事後分散を最も縮めた観測の pair_id(最大2件)。※ bayesian 更新ループの計装が必要なため A2 時点では空配列(別途配線)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "axis",
+          "label",
+          "contribution"
+        ],
+        "title": "ReasonAxis",
+        "description": "推薦理由の「軸別寄与」(好み起点)。文章化はフロントの責務。"
+      },
+      "RecommendItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "line_category": {
+            "type": "string",
+            "title": "Line Category"
+          },
+          "original_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "商品本来の発色 Lab"
+          },
+          "applied_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "唇に厚み t で塗った後の Lab"
+          },
+          "applied_chroma": {
+            "type": "number",
+            "title": "Applied Chroma",
+            "description": "applied_lab の彩度 C*=√(a²+b²)。清濁の判定軸"
+          },
+          "delta_e": {
+            "type": "number",
+            "title": "Delta E",
+            "description": "ソートに使った主スコア (PC指定時=pc_score 4D領域距離、それ以外=唇/目標色との ΔE2000)"
+          },
+          "pc_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Score",
+            "description": "applied_lab と PC 別 Lab+C* 領域とのユークリッド距離(4軸)。指定時のみ"
+          },
+          "delta_e_to_lip": {
+            "type": "number",
+            "title": "Delta E To Lip",
+            "description": "applied_lab と lip_lab の ΔE2000(CIEDE2000、参考)"
+          },
+          "catalog_pc_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Catalog Pc Tags",
+            "description": "カタログ pc_season タグ(参考表示。推奨ロジックには未使用)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "line_category",
+          "original_lab",
+          "applied_lab",
+          "applied_chroma",
+          "delta_e",
+          "delta_e_to_lip"
+        ],
+        "title": "RecommendItem"
+      },
+      "RecommendReasons": {
+        "properties": {
+          "color_percentile": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Color Percentile",
+            "description": "色の似合い順位率(1=プール内で最も似合う)"
+          },
+          "pref_percentile": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Pref Percentile",
+            "description": "好み一致の順位率(1=最も好みに一致)"
+          },
+          "scene_match": {
+            "type": "boolean",
+            "title": "Scene Match",
+            "description": "シーン選択で言及した軸に商品が合致したか(A1 の I_dialog 配線で生きる。A2 時点では false 固定)。",
+            "default": false
+          },
+          "top_axes": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonAxis"
+            },
+            "type": "array",
+            "title": "Top Axes",
+            "description": "好み起点の寄与上位軸(最大2、正寄与かつ確信のある軸のみ)"
+          },
+          "product_traits": {
+            "items": {
+              "$ref": "#/components/schemas/ProductTrait"
+            },
+            "type": "array",
+            "title": "Product Traits",
+            "description": "商品起点の特徴軸(最大2、is_系バイナリ除く・top_axes と重複除く)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "color_percentile",
+          "pref_percentile"
+        ],
+        "title": "RecommendReasons",
+        "description": "推薦理由の構造化データ(A2)。文章化はフロント conciergeScript.ts の責務。\n\n色/好みの寄与は「出所」でなく「意味」で再グルーピングした派生指標であり、\nスコア計算(R_final)には一切影響しない。正規化はパーセンタイル方式\n(候補プール内の順位率。絶対閾値なし=_flag_serendipity と同じ自己校正の哲学)。"
+      },
+      "RecommendRequest": {
+        "properties": {
+          "lip_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "唇地肌の Lab(下地)"
+          },
+          "t": {
+            "type": "number",
+            "maximum": 5.0,
+            "exclusiveMinimum": 0.0,
+            "title": "T",
+            "description": "塗り厚 t(塗り重ね量)",
+            "default": 1.0
+          },
+          "target_lab": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabValue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "並べ替えの目標色。省略時は lip_lab(=最も自然/唇寄り)"
+          },
+          "pc_season": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "イエベ春",
+                  "ブルベ夏",
+                  "イエベ秋",
+                  "ブルベ冬"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Season",
+            "description": "パーソナルカラー。指定時は applied_lab を PC 別 Lab 領域からの距離で並べ替える(論文ベース)。カタログタグはロジックに使わず、参考表示のみ。"
+          },
+          "line_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tint",
+                  "gloss",
+                  "matte",
+                  "velvet",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Category",
+            "description": "仕上げタイプで絞り込み"
+          },
+          "hue_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hue Min",
+            "description": "applied の色相下限(0-360°)"
+          },
+          "hue_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hue Max",
+            "description": "applied の色相上限(0-360°)"
+          },
+          "L_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "L Min",
+            "description": "applied の明度下限"
+          },
+          "L_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "L Max",
+            "description": "applied の明度上限"
+          },
+          "top_n": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "description": "返す件数",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "lip_lab"
+        ],
+        "title": "RecommendRequest"
+      },
+      "RecommendResponse": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "フィルタ後の候補数"
+          },
+          "catalog_size": {
+            "type": "integer",
+            "title": "Catalog Size",
+            "description": "カタログ全体の件数"
+          },
+          "filter_method": {
+            "type": "string",
+            "title": "Filter Method",
+            "description": "'pc_season_target_region' / 'delta_e_to_target' / 'delta_e_to_lip'"
+          },
+          "pc_season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Season",
+            "description": "指定された PC(あれば)"
+          },
+          "sort_target": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "並べ替えに使った目標色(PC指定時は領域中心の参考値)"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendItem"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "catalog_size",
+          "filter_method",
+          "sort_target",
+          "results"
+        ],
+        "title": "RecommendResponse"
+      },
+      "RecommendV2Item": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "line_category": {
+            "type": "string",
+            "title": "Line Category"
+          },
+          "effective_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "μ_thickness で補間した塗布後 Lab"
+          },
+          "delta_e_to_color": {
+            "type": "number",
+            "title": "Delta E To Color",
+            "description": "ΔE2000(effective_Lab, μ_color)"
+          },
+          "pref_match": {
+            "type": "number",
+            "title": "Pref Match",
+            "description": "μ_pref · c.x_20"
+          },
+          "f_score": {
+            "type": "number",
+            "title": "F Score",
+            "description": "-α·ΔE + μ_pref·c.x_20(Part IV)"
+          },
+          "familiarity": {
+            "type": "number",
+            "title": "Familiarity",
+            "description": "familiarity(c, user)(Part VI)"
+          },
+          "r_final": {
+            "type": "number",
+            "title": "R Final",
+            "description": "f - β(μ_explore)·familiarity(Part VI)"
+          },
+          "catalog_pc_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Catalog Pc Tags"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url",
+            "description": "商品スウォッチ画像 URL(Kawanoさん AR の表示用)"
+          },
+          "is_serendipity": {
+            "type": "boolean",
+            "title": "Is Serendipity",
+            "description": "セレンディピティ(冒険)枠か。返却 TOP-N 内で「μ_color から遠い(ΔE 中央値超)かつ familiarity が低い(中央値未満)」象限の商品に立つ。フロントはこの商品への like/dislike を is_serendipity=True の観測として送ることで θ_explore を更新できる(設計書 §7.4 / Part VI の配線)。",
+            "default": false
+          },
+          "eig_bits": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eig Bits",
+            "description": "期待情報利得 [bit](rerank=True 時のみ)"
+          },
+          "p_like": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Like",
+            "description": "like 確率(ΔE2000 知覚シグモイド、rerank=True 時のみ)"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "(1−w)·norm(R_final) + w·norm(EIG)(rerank=True 時のみ)"
+          },
+          "reasons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendReasons"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "推薦理由の構造化データ(A2)。reasons を読まない既存クライアントは無視できる(後方互換)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "line_category",
+          "effective_lab",
+          "delta_e_to_color",
+          "pref_match",
+          "f_score",
+          "familiarity",
+          "r_final"
+        ],
+        "title": "RecommendV2Item"
+      },
+      "RecommendV2Request": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "km_table": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KMTableRow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Km Table",
+            "description": "任意。caller が事前計算済みテーブルを持っているなら渡せる。未指定なら API 内部で user.lip_lab + 全カタログから生成。"
+          },
+          "line_category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tint",
+                  "gloss",
+                  "matte",
+                  "velvet",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Category",
+            "description": "仕上げで絞り込み(任意)"
+          },
+          "top_n": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "default": 5
+          },
+          "alpha": {
+            "type": "number",
+            "title": "Alpha",
+            "description": "色差感度(設計書既定 3.0)",
+            "default": 3.0
+          },
+          "beta_max": {
+            "type": "number",
+            "title": "Beta Max",
+            "description": "セレンディピティ最大係数(既定 5.0)",
+            "default": 5.0
+          },
+          "familiarity_weights": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Familiarity Weights",
+            "description": "[w1 対話明言, w2 cosine, w3 ΔE_inv](既定 4,3,2)"
+          },
+          "rerank": {
+            "type": "boolean",
+            "title": "Rerank",
+            "description": "True で EIG(期待情報利得)再ランクを発動。False(既定)なら従来どおり R_final 降順で並び・出力とも完全に同一。",
+            "default": false
+          },
+          "explore_weight": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explore Weight",
+            "description": "EIG ブレンド重み w(0=純 exploit/R_final, 1=純 explore/EIG)。None かつ rerank=True なら user.theta_explore.mu を使用。rerank=False のときは無視される。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "title": "RecommendV2Request",
+        "description": "主軸: user state だけ送れば内部でカタログから K-M テーブルを作って推奨を返す。\n\nadvanced: caller がすでに K-M テーブルを保持していて再計算を避けたい場合は\n`km_table` を直接渡せる(その場合 user.lip_lab は表示用としてのみ使う)。"
+      },
+      "RecommendV2Response": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "mu_thickness": {
+            "type": "number",
+            "title": "Mu Thickness",
+            "description": "このリクエスト時点の μ_thickness"
+          },
+          "beta_used": {
+            "type": "number",
+            "title": "Beta Used",
+            "description": "μ_explore から計算された β"
+          },
+          "reranked_by_eig": {
+            "type": "boolean",
+            "title": "Reranked By Eig",
+            "description": "EIG 再ランクが発動したか(rerank=True 時 True)",
+            "default": false
+          },
+          "used_explore_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Explore Weight",
+            "description": "再ランクで実際に使った w(rerank=False では None)"
+          },
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count",
+            "description": "残候補数(A2-fix・competitive set 方式)。現時点の事後で全候補をスコアリングし、TOP-N 最下位スコアから margin·(1位−N位)以内にいる候補の数。事後が尖るほど減る(=絞り込みの進行)。退化時は TOP-N 件数。表示専用の派生指標で TOP-N 選定には不使用。※ 当初 fix の『R_final>中央値』定義は中央値分割が常に≈N/2で減らないため破棄。",
+            "default": 0
+          },
+          "catalog_size": {
+            "type": "integer",
+            "title": "Catalog Size",
+            "description": "候補プール(km_table)の総数。フロントの『◯色から』起点に使う。",
+            "default": 0
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendV2Item"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "mu_thickness",
+          "beta_used",
+          "results"
+        ],
+        "title": "RecommendV2Response"
+      },
+      "ThetaSnapshot": {
+        "properties": {
+          "pref_mu": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "Pref Mu"
+          },
+          "pref_var": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 20,
+            "title": "Pref Var"
+          },
+          "top_shrunk_axis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Shrunk Axis",
+            "description": "直前の選択で σ² が最も縮んだ θ_pref 軸名(無ければ None)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pref_mu",
+          "pref_var"
+        ],
+        "title": "ThetaSnapshot",
+        "description": "フロント中間実況用: θ_pref の現在値 + 直前で最も分散が縮んだ軸。"
+      },
+      "UpdateUserRequest": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/Observation"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Observations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "observations"
+        ],
+        "title": "UpdateUserRequest",
+        "description": "既存 user 状態 + 新観測リスト → 更新後 user 状態。"
+      },
+      "UpdateUserResponse": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "n_applied": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "N Applied",
+            "description": "各 θ で何件の観測が適用されたか(診断用)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "n_applied"
+        ],
+        "title": "UpdateUserResponse"
+      },
+      "UserState": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "lip_lab": {
+            "$ref": "#/components/schemas/LabValue",
+            "description": "ノーリップ唇 Lab(初回診断で固定)"
+          },
+          "pc_season": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "イエベ春",
+                  "ブルベ夏",
+                  "イエベ秋",
+                  "ブルベ冬"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Season",
+            "description": "Kawanoさん の PC 判定結果"
+          },
+          "scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenes",
+            "description": "シーン選択(school/friends/date/special)。recommend_v2 の I_dialog(familiarity 第1項)判定に使う(A1)。未指定なら I_dialog=0 で従来挙動。"
+          },
+          "theta_color": {
+            "$ref": "#/components/schemas/GaussianLab"
+          },
+          "theta_pref": {
+            "$ref": "#/components/schemas/GaussianVec20"
+          },
+          "theta_explore": {
+            "$ref": "#/components/schemas/GaussianScalar",
+            "description": "セレンディピティ反応性。設計書既定 μ=0.5, σ²=0.25"
+          },
+          "theta_thickness": {
+            "$ref": "#/components/schemas/GaussianScalar",
+            "description": "塗り方好み(0=薄め, 1=濃いめ)。設計書既定 μ=0.5, σ²=0.1"
+          },
+          "pref_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pref Evidence",
+            "description": "θ_pref 各軸(AXIS_NAMES)の事後分散を最も縮めた観測の pair_id 列(来歴・A2)。reasons.top_axes の evidence に使う。pair_compare 適用時に構築され、以降の update_user では保持される(ステートレス往復で持ち回る)。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "lip_lab",
+          "theta_color",
+          "theta_pref",
+          "theta_explore",
+          "theta_thickness"
+        ],
+        "title": "UserState",
+        "description": "ユーザー1人の全パラメータ。設計書 §2.1 / §7。\n\nGAS から `/update_user` / `/recommend/v2` に丸ごと渡してもらう。"
+      },
+      "V14NextRequest": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/V14Session"
+          },
+          "pair_id": {
+            "type": "string",
+            "title": "Pair Id"
+          },
+          "chose": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right"
+            ],
+            "title": "Chose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "pair_id",
+          "chose"
+        ],
+        "title": "V14NextRequest"
+      },
+      "V14NextResponse": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/V14Session"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "next_pair": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairV14"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "theta_snapshot": {
+            "$ref": "#/components/schemas/ThetaSnapshot"
+          },
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count"
+          },
+          "candidate_count_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count Raw",
+            "description": "ラチェット前の生 competitive set 数(診断用。増減し得る)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "done",
+          "theta_snapshot",
+          "candidate_count"
+        ],
+        "title": "V14NextResponse"
+      },
+      "V14Session": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "asked_pair_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Asked Pair Ids"
+          },
+          "spoken_axes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Spoken Axes"
+          },
+          "cc_floor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Floor",
+            "description": "candidate_count の過去最小値(表示ラチェット用・フロントは触らない)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "title": "V14Session",
+        "description": "ステートレス往復セッション(UserState 相当 + 進行)。サーバ側には保存しない。"
+      },
+      "V14StartRequest": {
+        "properties": {
+          "lip_lab": {
+            "$ref": "#/components/schemas/LabValue"
+          },
+          "scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenes"
+          },
+          "pc_season": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "イエベ春",
+                  "ブルベ夏",
+                  "イエベ秋",
+                  "ブルベ冬"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pc Season"
+          },
+          "warmness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warmness"
+          },
+          "mu_thickness": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Mu Thickness",
+            "description": "effective_lab 計算の塗り厚(既定 0.5)",
+            "default": 0.5
+          }
+        },
+        "type": "object",
+        "required": [
+          "lip_lab"
+        ],
+        "title": "V14StartRequest"
+      },
+      "V14StartResponse": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/V14Session"
+          },
+          "n_pairs_total": {
+            "type": "integer",
+            "title": "N Pairs Total"
+          },
+          "first_pair": {
+            "$ref": "#/components/schemas/PairV14"
+          },
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count"
+          },
+          "catalog_size": {
+            "type": "integer",
+            "title": "Catalog Size"
+          },
+          "candidate_count_raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count Raw",
+            "description": "ラチェット前の生 competitive set 数(診断用。増減し得る)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "n_pairs_total",
+          "first_pair",
+          "candidate_count",
+          "catalog_size"
+        ],
+        "title": "V14StartResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

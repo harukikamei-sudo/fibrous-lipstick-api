@@ -2,6 +2,9 @@
 
 ★ 軸定義は DB(lipstick_DB_updated.xlsx)の正式 20 軸に準拠(2026-06-02 確定)。
    DB README の「20次元の構成」と users シートの θ_pref 列順を source of truth とする。
+   **x20 軸定義は AXIS_NAMES(v1.3)で確定。変更は要協議**(scene_priors / reasons の
+   top_axes・product_traits・AXIS_LABELS_JA / I_dialog がこの順序と名前に依存する)。
+   KAWANO_HANDOFF §Q4 の仮20軸(transparency/mature 等)は廃止。正は本ファイル。
 
 20 軸の内訳:
   色相 (1):    hue
@@ -22,7 +25,7 @@ from __future__ import annotations
 import csv
 import math
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 CATALOG_PATH = os.path.join(os.path.dirname(__file__), "products_with_lab.csv")
 OUT_PATH = os.path.join(os.path.dirname(__file__), "products_with_lab.csv")
@@ -61,6 +64,32 @@ AXIS_NAMES: List[str] = [
     "korean",
 ]
 assert len(AXIS_NAMES) == 20
+
+# 推薦理由(reasons)のフロント表示用ラベル(A2)。conciergeScript.ts と揃えること。
+# Mina に伝わる平易な言葉に寄せる(形態名より質感の言葉)。
+AXIS_LABELS_JA: Dict[str, str] = {
+    "hue": "色み",
+    "saturation": "鮮やかさ",
+    "brightness": "明るさ",
+    "pigmentation": "発色",
+    "glossy": "ツヤ",
+    "moisture_finish": "うるおい",
+    "sheer": "透け感",
+    "velvet": "マット感",
+    "blur": "ふんわり感",
+    "is_tint": "ティント",
+    "is_balm": "バーム",
+    "is_gloss": "グロス",
+    "moisturizing": "保湿",
+    "longlasting": "落ちにくさ",
+    "transfer_resistance": "色移りしにくさ",
+    "girly": "ガーリー",
+    "makeup_intensity": "メイク感",
+    "konare": "こなれ感",
+    "sweetness": "甘さ",
+    "korean": "韓国っぽさ",
+}
+assert set(AXIS_LABELS_JA) == set(AXIS_NAMES)
 
 # lines シート由来の 11 軸(line_id でルックアップ)
 LINE_AXES = [
@@ -118,6 +147,44 @@ def _chroma(a: float, b: float) -> float:
     return math.sqrt(a * a + b * b)
 
 
+# ============ 色別 x20 補正(LOG エポック16・2026-06-27 承認、harness γ スイープ検証中) ============
+# 問題: 仕上がり軸(sheer 等)は line_id ルックアップ=同一ラインなら色不問で一定。
+#       ティント系クラスタで色解像度が不足し mina/aya の TOP5 が collapse(A4 [4])。
+# 方針: ライン共通の仕上がり軸を**色で変調**。淡い/明るい色ほど透けて見え(L↑→sheer↑)、
+#       高彩度ほど不透明に見える(C↑→sheer↓)という知覚に整合。
+#   - **ゼロ平均**(アンカー = カタログ中央値 L₀/C₀)→ ラインの平均は不変=個性を保存。
+#   - **有界 γ**(|Δ| ≲ 0.49γ < γ)→ カテゴリ反転を起こさない。
+#   - **γ=0 で恒等**(現行と完全一致=後方互換)。採用 γ は harness 結果を見て**人間が決定**。
+#   - まず **sheer 単独**(velvet/blur は機序確認後に拡張)。世界観軸は既に Lab 由来なので触らない。
+CORRECTION_GAMMA = 0.0           # 既定 0 = 無補正(現行一致)。harness で {0,0.1,0.2,0.3} スイープ。
+_CORR_L0 = 45.8                  # カタログ median L(ゼロ平均アンカー)
+_CORR_C0 = 48.3                  # カタログ median C*(ゼロ平均アンカー)
+_CORR_WL = 0.6                   # 明度の重み
+_CORR_WC = 0.4                   # 彩度の重み
+_CORRECTED_AXES = ("sheer",)     # 補正対象軸(まず sheer 単独)
+
+
+def apply_color_correction(
+    x20: List[float], L: float, a: float, b: float, gamma: Optional[float] = None
+) -> List[float]:
+    """ライン共通の仕上がり軸を色で変調する(ゼロ平均・有界)。γ=0(既定)で恒等=現行一致。
+
+    Δ = γ·[ w_L·(L−L₀)/100 − w_C·(C−C₀)/60 ]、対象軸に加算して [0,1] にクリップ。
+    入力 x20 は破壊せず新リストを返す(純関数)。harness は CSV(γ=0 baseline)の上に
+    任意 γ を重ねて検証する。
+    """
+    g = CORRECTION_GAMMA if gamma is None else gamma
+    if g <= 0.0:
+        return list(x20)
+    C = _chroma(a, b)
+    delta = g * (_CORR_WL * (L - _CORR_L0) / 100.0 - _CORR_WC * (C - _CORR_C0) / 60.0)
+    out = list(x20)
+    for name in _CORRECTED_AXES:
+        i = AXIS_NAMES.index(name)
+        out[i] = _clip01(out[i] + delta)
+    return out
+
+
 def derive_x20(row: Dict[str, str]) -> List[float]:
     """1 商品の x_20 を DB 20 軸の正準順序で生成。
 
@@ -172,7 +239,9 @@ def derive_x20(row: Dict[str, str]) -> List[float]:
     seqenkan = [girly, makeup_intensity, konare, sweetness, korean]
 
     # 正準順序で連結: [hue,sat,bright,pig] + [11 line軸] + [世界観5]
-    return [hue, saturation, brightness, pigmentation] + line_vals + seqenkan
+    x20 = [hue, saturation, brightness, pigmentation] + line_vals + seqenkan
+    # 色別補正(CORRECTION_GAMMA=0 既定 → 恒等=現行一致)。
+    return apply_color_correction(x20, L, a, b)
 
 
 X20_COL_NAMES = [f"x20_{i:02d}_{name}" for i, name in enumerate(AXIS_NAMES)]

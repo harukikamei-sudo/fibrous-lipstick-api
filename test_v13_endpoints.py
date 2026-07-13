@@ -138,6 +138,27 @@ def test_update_user_normal() -> None:
     print(f"  ✓ μ_thickness: {before_mu_t:.3f} → {new_mu_t:.3f}")
 
 
+def test_update_user_extras_accepted() -> None:
+    hr("/v13/update_user: extras(F4-fix #4 の kept/decided)を受理し更新を壊さない")
+    user = make_user()
+    r = client.post("/v13/update_user", json={
+        "user": user,
+        "observations": [{
+            "source": "ar_view_like",
+            "product_id": "rmd_blur_fudge_03",
+            "observed_lab": {"L": 46, "a": 42, "b": 21},
+            "thickness": 0.9,
+            "y": 1.0,
+            "extras": {"action": "decide", "kept": True, "decided": True},
+        }],
+    })
+    assert_status(r, 200, "POST /v13/update_user (extras 付き)")
+    d = r.json()
+    # extras はベイズ更新に未使用 = 通常どおり color/thickness が 1 件適用される
+    assert d["n_applied"]["theta_color"] == 1 and d["n_applied"]["theta_thickness"] == 1
+    print("  ✓ extras 付き観測を受理(更新は通常どおり)")
+
+
 def test_update_user_empty_obs_422() -> None:
     hr("/v13/update_user: observations 空は 422")
     user = make_user()
@@ -301,6 +322,40 @@ def test_recommend_rerank_top1_de_monotonic() -> None:
     print("  ✓ w を上げるほど遠い色(探索的)が先頭に")
 
 
+def test_popular_static_ranking() -> None:
+    hr("/v13/popular: ユーザー非依存・代表性ランキング(決定的・top_n 尊重)")
+    r = client.get("/v13/popular?top_n=5")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["catalog_size"] >= 1
+    assert 1 <= len(d["results"]) <= 5, d["results"]
+    reps = [it["representativeness"] for it in d["results"]]
+    assert all(0.0 <= x <= 1.0 for x in reps), reps
+    # 代表性は降順(中心に近い=高い が先頭)
+    assert reps == sorted(reps, reverse=True), f"representativeness 降順でない: {reps}"
+    # 決定的: 2 回呼んで同一
+    ids1 = [it["product_id"] for it in d["results"]]
+    ids2 = [it["product_id"] for it in client.get("/v13/popular?top_n=5").json()["results"]]
+    assert ids1 == ids2, (ids1, ids2)
+    # lip なし → effective_lab は None(ユーザー非依存)
+    assert all(it.get("effective_lab") is None for it in d["results"]), "lip なしで effective_lab が出た"
+    print(f"  ✓ 定番 TOP-1: {ids1[0]} (rep={reps[0]:.3f}), 決定的")
+
+
+def test_popular_with_lip_returns_effective_lab() -> None:
+    hr("/v13/popular?lip_* → 各定番に effective_lab(本人の唇に重ねる用)。ランキングは不変")
+    base = client.get("/v13/popular?top_n=5").json()["results"]
+    r = client.get("/v13/popular?top_n=5&lip_l=62&lip_a=22&lip_b=12&mu_thickness=0.5")
+    assert r.status_code == 200, r.text
+    d = r.json()["results"]
+    # ランキング(順序)は lip 有無で不変(ユーザー非依存)
+    assert [x["product_id"] for x in d] == [x["product_id"] for x in base], "lip でランキングが変わった"
+    for it in d:
+        eff = it.get("effective_lab")
+        assert eff and all(k in eff for k in ("L", "a", "b")), it
+    print(f"  ✓ effective_lab 付与 (例 {d[0]['product_id']}: L*{d[0]['effective_lab']['L']:.0f})、順序不変")
+
+
 if __name__ == "__main__":
     # /v13/pair_compare/init
     test_pair_init_returns_10_pairs()
@@ -311,6 +366,7 @@ if __name__ == "__main__":
     test_pair_apply_no_pc_uses_neutral()
     # /v13/update_user
     test_update_user_normal()
+    test_update_user_extras_accepted()
     test_update_user_empty_obs_422()
     test_update_user_dislike_does_not_move_color()
     # /v13/recommend
@@ -323,5 +379,8 @@ if __name__ == "__main__":
     test_recommend_rerank_w0_equals_default()
     test_recommend_rerank_explore_weight_default()
     test_recommend_rerank_top1_de_monotonic()
+    # /v13/popular
+    test_popular_static_ranking()
+    test_popular_with_lip_returns_effective_lab()
     print("\n" + "=" * 50)
-    print("✅ /v13/* endpoints: 全 15 テスト合格")
+    print("✅ /v13/* endpoints: 全 18 テスト合格")

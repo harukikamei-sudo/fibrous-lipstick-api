@@ -5,7 +5,7 @@ GAS+Spreadsheet が state を保持し、本 API はステートレス計算サ�
 更新後の状態を返す。永続化は本 API では行わない。
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +49,11 @@ class UserState(BaseModel):
     user_id: str
     lip_lab: LabValue = Field(..., description="ノーリップ唇 Lab(初回診断で固定)")
     pc_season: Optional[PCSeason] = Field(None, description="Kawanoさん の PC 判定結果")
+    scenes: Optional[List[str]] = Field(
+        None,
+        description="シーン選択(school/friends/date/special)。recommend_v2 の I_dialog"
+                    "(familiarity 第1項)判定に使う(A1)。未指定なら I_dialog=0 で従来挙動。",
+    )
     theta_color: GaussianLab
     theta_pref: GaussianVec20
     theta_explore: GaussianScalar = Field(
@@ -58,6 +63,12 @@ class UserState(BaseModel):
     theta_thickness: GaussianScalar = Field(
         ...,
         description="塗り方好み(0=薄め, 1=濃いめ)。設計書既定 μ=0.5, σ²=0.1"
+    )
+    pref_evidence: Optional[Dict[str, List[str]]] = Field(
+        None,
+        description="θ_pref 各軸(AXIS_NAMES)の事後分散を最も縮めた観測の pair_id 列(来歴・A2)。"
+                    "reasons.top_axes の evidence に使う。pair_compare 適用時に構築され、"
+                    "以降の update_user では保持される(ステートレス往復で持ち回る)。",
     )
 
 
@@ -84,6 +95,11 @@ class Observation(BaseModel):
     """
     source: ObservationSource
     product_id: Optional[str] = None
+    source_pair_id: Optional[str] = Field(
+        None,
+        description="この観測が由来するペア比較の pair_id(あれば)。θ_pref の来歴"
+                    "(pref_evidence)構築に使う。AR 観測等では None。",
+    )
     observed_lab: Optional[LabValue] = Field(
         None,
         description="θ_color 更新用。AR の場合は applied_Lab(K-M 結果)、"
@@ -106,6 +122,11 @@ class Observation(BaseModel):
     )
     viewed_seconds: Optional[float] = None
     timestamp: Optional[str] = None
+    extras: Optional[Dict[str, Any]] = Field(
+        None,
+        description="拡張観測メタ(F4-fix #4)。例 {action:'view'|'keep'|'decide', kept:bool, "
+                    "decided:bool}。ベイズ更新には未使用=Phase2 のデータ収集用に保持するのみ。",
+    )
 
 
 # ============ ペア比較(Part II) ============
@@ -154,6 +175,11 @@ class PairApplyRequest(BaseModel):
     warmness: Optional[float] = Field(
         None, description="Part I の warmness 値(σ²_color_0 のシグモイドに使う)"
     )
+    scenes: Optional[List[str]] = Field(
+        None,
+        description="シーン選択(school/friends/date/special)。θ_pref の事前を scene_priors で"
+                    "構築する(A1)。未指定なら従来どおり flat 事前(完全後方互換)。",
+    )
 
 
 class PairApplyResponse(BaseModel):
@@ -164,6 +190,11 @@ class PairApplyResponse(BaseModel):
     theta_thickness: GaussianScalar
     n_color_obs: int
     n_worldview_obs: int
+    pref_evidence: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="θ_pref 軸別の来歴(軸名→縮小寄与の大きい pair_id 列)。"
+                    "caller は UserState.pref_evidence に格納して持ち回る(A2)。",
+    )
 
 
 # ============ /update_user ============
@@ -240,6 +271,52 @@ class RecommendV2Request(BaseModel):
     )
 
 
+class ReasonAxis(BaseModel):
+    """推薦理由の「軸別寄与」(好み起点)。文章化はフロントの責務。"""
+    axis: str = Field(..., description="catalog_x20.AXIS_NAMES の軸名")
+    label: str = Field(..., description="日本語ラベル(catalog_x20.AXIS_LABELS_JA)")
+    contribution: float = Field(..., description="μ_pref[k]·x20[k](正寄与のみ)")
+    evidence: List[str] = Field(
+        default_factory=list,
+        description="この軸の事後分散を最も縮めた観測の pair_id(最大2件)。"
+                    "※ bayesian 更新ループの計装が必要なため A2 時点では空配列(別途配線)。",
+    )
+
+
+class ProductTrait(BaseModel):
+    """推薦理由の「商品起点の特徴」(その商品で x20 値が突出している軸)。"""
+    axis: str = Field(..., description="商品側で値が突出している x20 軸名")
+    label: str = Field(..., description="日本語ラベル(catalog_x20.AXIS_LABELS_JA)")
+
+
+class RecommendReasons(BaseModel):
+    """推薦理由の構造化データ(A2)。文章化はフロント conciergeScript.ts の責務。
+
+    色/好みの寄与は「出所」でなく「意味」で再グルーピングした派生指標であり、
+    スコア計算(R_final)には一切影響しない。正規化はパーセンタイル方式
+    (候補プール内の順位率。絶対閾値なし=_flag_serendipity と同じ自己校正の哲学)。
+    """
+    color_percentile: float = Field(
+        ..., ge=0.0, le=1.0, description="色の似合い順位率(1=プール内で最も似合う)"
+    )
+    pref_percentile: float = Field(
+        ..., ge=0.0, le=1.0, description="好み一致の順位率(1=最も好みに一致)"
+    )
+    scene_match: bool = Field(
+        False,
+        description="シーン選択で言及した軸に商品が合致したか(A1 の I_dialog 配線で生きる。"
+                    "A2 時点では false 固定)。",
+    )
+    top_axes: List[ReasonAxis] = Field(
+        default_factory=list,
+        description="好み起点の寄与上位軸(最大2、正寄与かつ確信のある軸のみ)",
+    )
+    product_traits: List[ProductTrait] = Field(
+        default_factory=list,
+        description="商品起点の特徴軸(最大2、is_系バイナリ除く・top_axes と重複除く)",
+    )
+
+
 class RecommendV2Item(BaseModel):
     product_id: str
     name: str
@@ -271,6 +348,11 @@ class RecommendV2Item(BaseModel):
     score: Optional[float] = Field(
         None, description="(1−w)·norm(R_final) + w·norm(EIG)(rerank=True 時のみ)"
     )
+    reasons: Optional[RecommendReasons] = Field(
+        None,
+        description="推薦理由の構造化データ(A2)。reasons を読まない既存クライアントは"
+                    "無視できる(後方互換)。",
+    )
 
 
 class RecommendV2Response(BaseModel):
@@ -283,4 +365,165 @@ class RecommendV2Response(BaseModel):
     used_explore_weight: Optional[float] = Field(
         None, description="再ランクで実際に使った w(rerank=False では None)"
     )
+    candidate_count: int = Field(
+        0,
+        description="残候補数(A2-fix・competitive set 方式)。現時点の事後で全候補を"
+                    "スコアリングし、TOP-N 最下位スコアから margin·(1位−N位)以内にいる候補の数。"
+                    "事後が尖るほど減る(=絞り込みの進行)。退化時は TOP-N 件数。"
+                    "表示専用の派生指標で TOP-N 選定には不使用。"
+                    "※ 当初 fix の『R_final>中央値』定義は中央値分割が常に≈N/2で減らないため破棄。",
+    )
+    catalog_size: int = Field(
+        0, description="候補プール(km_table)の総数。フロントの『◯色から』起点に使う。"
+    )
     results: List[RecommendV2Item]
+
+
+# ============ v14 逐次ペア比較(A3)============
+
+class PairV14Side(BaseModel):
+    """v14 ペアの片側。effective_lab(唇に塗った想定の色)を含むのが v13 との差。"""
+    product_id: str
+    name: str
+    image_url: Optional[str] = None
+    lab: LabValue                       # 商品マスストーン Lab
+    x20: List[float] = Field(..., min_length=20, max_length=20)
+    effective_lab: LabValue = Field(
+        ..., description="lip_lab + μ_thickness の K-M 塗布後 Lab(フロントが本人の唇を再着色)"
+    )
+
+
+class PairV14(BaseModel):
+    pair_id: str
+    pair_type: Literal["color", "worldview"]
+    left: PairV14Side
+    right: PairV14Side
+
+
+class V14Session(BaseModel):
+    """ステートレス往復セッション(UserState 相当 + 進行)。サーバ側には保存しない。"""
+    user: UserState
+    asked_pair_ids: List[str] = Field(default_factory=list)
+    # コンシェルジュ発話 API(/v14/concierge_speech)の中間実況の重複/予算状態を相乗り。
+    # spoken_axes に載る=実況済み軸名。予算は len(spoken_axes) < PAIR_REALIZATION_BUDGET(3)で判定。
+    # 表示状態を推薦セッションに相乗りさせる=関心の軽い混在だが、RN(Kawano)側のフロント
+    # 新規実装をゼロにする判断(spoken_axes が要るのは explore のみ=session を往復中のため)。
+    spoken_axes: List[str] = Field(default_factory=list)
+    # candidate_count ラチェット(表示用の過去最小値)。competitive set は事後の
+    # スナップショットで 1 問ごとの単調減少は保証されない(5→6 に増え得る)ため、
+    # 表示値は min(過去最小, 今回生値) で単調非増加を保証する。生値は
+    # candidate_count_raw でレスポンスに併載(正直さ・診断用)。spoken_axes と同じ相乗り設計。
+    cc_floor: Optional[int] = Field(
+        None, description="candidate_count の過去最小値(表示ラチェット用・フロントは触らない)"
+    )
+
+
+class ThetaSnapshot(BaseModel):
+    """フロント中間実況用: θ_pref の現在値 + 直前で最も分散が縮んだ軸。"""
+    pref_mu: List[float] = Field(..., min_length=20, max_length=20)
+    pref_var: List[float] = Field(..., min_length=20, max_length=20)
+    top_shrunk_axis: Optional[str] = Field(
+        None, description="直前の選択で σ² が最も縮んだ θ_pref 軸名(無ければ None)"
+    )
+
+
+class V14StartRequest(BaseModel):
+    lip_lab: LabValue
+    scenes: Optional[List[str]] = None
+    pc_season: Optional[PCSeason] = None
+    warmness: Optional[float] = None
+    mu_thickness: float = Field(
+        0.5, ge=0.0, le=1.0, description="effective_lab 計算の塗り厚(既定 0.5)"
+    )
+
+
+class V14StartResponse(BaseModel):
+    session: V14Session
+    n_pairs_total: int
+    first_pair: PairV14
+    candidate_count: int  # 表示用(ラチェット済=単調非増加)。「絞り込めました」演出と整合
+    catalog_size: int
+    candidate_count_raw: Optional[int] = Field(
+        None, description="ラチェット前の生 competitive set 数(診断用。増減し得る)"
+    )
+
+
+class V14NextRequest(BaseModel):
+    session: V14Session
+    pair_id: str
+    chose: Literal["left", "right"]
+
+
+class V14NextResponse(BaseModel):
+    session: V14Session
+    done: bool
+    next_pair: Optional[PairV14] = None
+    theta_snapshot: ThetaSnapshot
+    candidate_count: int  # 表示用(ラチェット済=単調非増加)
+    candidate_count_raw: Optional[int] = Field(
+        None, description="ラチェット前の生 competitive set 数(診断用。増減し得る)"
+    )
+
+
+# ============ /v13/popular: ユーザー非依存の「みんなの定番」(F4-fix #5)============
+
+class PopularItem(BaseModel):
+    product_id: str
+    name: str
+    line_category: str
+    image_url: Optional[str] = None
+    lab: LabValue
+    representativeness: float = Field(
+        ..., ge=0.0, le=1.0, description="定番度(カタログ中心 Lab への近さ。1=最も汎用的)"
+    )
+    effective_lab: Optional[LabValue] = Field(
+        None,
+        description="lip_lab(+mu_thickness)を渡した場合の K-M 塗布後 Lab。フロントが本人の唇に"
+                    "重ねる用。未指定なら None(ランキングはユーザー非依存のまま)。",
+    )
+
+
+class PopularResponse(BaseModel):
+    catalog_size: int
+    method: str = Field(..., description="代表性の算出方法(MVP=median Lab centroid 距離)")
+    results: List[PopularItem]
+
+
+# ============ /v14/concierge_speech: コンシェルジュ発話生成(F3 を API 化)============
+# フロント conciergeScript.ts のロジックを Python に一本化(RN/Next の二重実装回避)。
+# 既存の reasons(A2)/ theta_snapshot(A3・session 内)を日本語文面に変換するだけ。
+
+ConciergePhase = Literal["explore", "recommend", "decide"]
+# 【将来拡張・今は増やさない】双方向チャット相談機能(/v14/concierge_chat・Phase 2+)を足す場合、
+#   その自由対話の返答は新種別 "chat_reply" として ここに追加する想定。現行の一方通行テンプレ
+#   (/v14/concierge_speech)とは別系統・別モデルで共存させる(LOG「将来像」/ API_GUIDE 参照)。
+#   前提=LLM 必須・チャット UI 必須・「LLM 不使用」MTG 合意の見直し。実装時に別 PR で追加=現状は
+#   Literal 不変(CI・TS パリティ不変)。
+ConciergeSpeechType = Literal[
+    "step_intro", "axis_realization", "reason_user", "reason_product",
+    "reason_hybrid", "serendipity_offer", "decision_confirm", "decision_final",
+]
+
+
+class ConciergeSpeech(BaseModel):
+    type: ConciergeSpeechType
+    text: str
+
+
+class ConciergeSpeechRequest(BaseModel):
+    phase: ConciergePhase
+    # explore: session を往復(spoken_axes = 実況済み軸の状態を相乗り)。step は step_intro 用。
+    session: Optional[V14Session] = None
+    step: Optional[str] = Field(None, description="step_intro 用のステップ名(例 capture_wrist)")
+    # recommend: reasons を口語化。is_serendipity で冒険枠。scenes は組合せ起点パターン用。
+    reasons: Optional[RecommendReasons] = None
+    is_serendipity: bool = False
+    scenes: Optional[List[str]] = None
+    # decide: 終端台詞か確認台詞か。
+    is_final: bool = False
+
+
+class ConciergeSpeechResponse(BaseModel):
+    speech: Optional[ConciergeSpeech] = None
+    # explore で実況したら spoken_axes を追記した session を返す(caller が次ターンへ持ち回る)。
+    session: Optional[V14Session] = None

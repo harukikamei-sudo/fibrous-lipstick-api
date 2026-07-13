@@ -298,6 +298,174 @@ def test_explore_does_not_ignore_color() -> None:
     print()
 
 
+def _user_with_pref(mu, var, mu_thickness=1.0, mu_color=(55, 35, 5)) -> UserState:
+    u = _make_user(mu_thickness=mu_thickness, mu_color=mu_color)
+    u.theta_pref = GaussianVec20(mu=list(mu), var=list(var))
+    return u
+
+
+# ============ A2: reasons テスト(14〜18)============
+
+def test_reasons_percentile_order() -> None:
+    print("Test 14: reasons パーセンタイル(近い色ほど color_percentile 高)")
+    user = _make_user(mu_thickness=1.0, mu_color=(55, 35, 5))
+    km = [
+        _make_km_row("near", LabValue(L=55, a=35, b=5)),    # t=1 で μ_color ちょうど
+        _make_km_row("mid", LabValue(L=50, a=30, b=18)),
+        _make_km_row("far", LabValue(L=30, a=62, b=42)),
+    ]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=3))
+    by = {it.product_id: it for it in res.results}
+    assert all(it.reasons is not None for it in res.results)
+    assert by["near"].reasons.color_percentile > by["far"].reasons.color_percentile
+    for it in res.results:
+        assert 0.0 <= it.reasons.color_percentile <= 1.0
+        assert 0.0 <= it.reasons.pref_percentile <= 1.0
+    print(f"  ✓ near.color_pct={by['near'].reasons.color_percentile:.2f} > "
+          f"far={by['far'].reasons.color_percentile:.2f}、値域[0,1]")
+
+
+def test_reasons_n1_boundary() -> None:
+    print("Test 15: reasons N=1 境界 → percentile=1.0")
+    user = _make_user(mu_thickness=1.0)
+    km = [_make_km_row("only", LabValue(L=50, a=40, b=10))]
+    r = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=1)).results[0].reasons
+    assert r.color_percentile == 1.0 and r.pref_percentile == 1.0
+    print("  ✓ 単一候補は color/pref percentile=1.0")
+
+
+def test_reasons_rho_gate_and_negative() -> None:
+    print("Test 16: top_axes は 正寄与 かつ var≤RHO·TAU2 のみ(負寄与/高分散は除外)")
+    mu = [0.0] * 20
+    var = [1.0] * 20
+    mu[6] = 1.0; var[6] = 0.3      # sheer: eligible
+    mu[2] = 1.0; var[2] = 0.9      # brightness: 寄与大だが高分散 → 除外
+    mu[5] = -1.0; var[5] = 0.3     # moisture_finish: 負寄与 → 除外
+    user = _user_with_pref(mu, var)
+    x20 = [0.0] * 20
+    x20[6] = 0.8; x20[2] = 0.9; x20[5] = 0.9
+    km = [_make_km_row("p", LabValue(L=50, a=40, b=10), x20=x20),
+          _make_km_row("q", LabValue(L=48, a=38, b=8), x20=[0.1] * 20)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    p = next(it for it in res.results if it.product_id == "p")
+    axes = [a.axis for a in p.reasons.top_axes]
+    assert "sheer" in axes, axes
+    assert "brightness" not in axes, axes        # 高分散で除外(寄与は大きいのに)
+    assert "moisture_finish" not in axes, axes    # 負寄与で除外
+    assert all(a.contribution > 0 for a in p.reasons.top_axes)
+    print(f"  ✓ top_axes={axes}(brightness=高分散除外, moisture_finish=負寄与除外)")
+
+
+def test_reasons_product_traits_exclude() -> None:
+    print("Test 17: product_traits は is_系除外・top_axes と重複除外")
+    mu = [0.0] * 20
+    var = [1.0] * 20
+    mu[6] = 1.0; var[6] = 0.3      # sheer → top_axes
+    user = _user_with_pref(mu, var)
+    x20 = [0.0] * 20
+    x20[9] = 1.0   # is_tint(バイナリ → trait 除外)
+    x20[6] = 0.9   # sheer(top_axis → trait 除外)
+    x20[4] = 0.7   # glossy(trait 候補)
+    km = [_make_km_row("p", LabValue(L=50, a=40, b=10), x20=x20),
+          _make_km_row("q", LabValue(L=48, a=38, b=8), x20=[0.1] * 20)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    p = next(it for it in res.results if it.product_id == "p")
+    traits = [t.axis for t in p.reasons.product_traits]
+    assert "is_tint" not in traits, traits     # バイナリ除外
+    assert "sheer" not in traits, traits        # top_axes と重複除外
+    assert "glossy" in traits, traits
+    print(f"  ✓ product_traits={traits}(is_tint/sheer 除外, glossy 採用)")
+
+
+def test_determinism_and_tiebreak() -> None:
+    print("Test 18: 決定性(同一入力で同一TOP-N)+ 同点は商品ID昇順")
+    user = _make_user(mu_thickness=1.0)
+    same = LabValue(L=50, a=40, b=10)
+    km = [_make_km_row("b", same, x20=[0.2] * 20),
+          _make_km_row("a", same, x20=[0.2] * 20),
+          _make_km_row("c", same, x20=[0.2] * 20)]
+    r1 = [it.product_id for it in recommend_v2(
+        RecommendV2Request(user=user, km_table=km, top_n=3)).results]
+    r2 = [it.product_id for it in recommend_v2(
+        RecommendV2Request(user=user, km_table=km, top_n=3)).results]
+    assert r1 == r2, (r1, r2)                 # 同一入力 → 同一出力
+    assert r1 == ["a", "b", "c"], r1          # 同点は商品ID昇順
+    print(f"  ✓ 2回一致 + 同点ID昇順: {r1}")
+
+
+def test_reasons_backward_compat_additive() -> None:
+    print("Test 19: rerank=False でも reasons は付くが従来フィールドは不変(後方互換)")
+    user = _make_user(mu_thickness=1.0)
+    km = [_make_km_row(f"p{i}", LabValue(L=50 + i, a=40, b=10)) for i in range(6)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=5))
+    assert res.reranked_by_eig is False
+    assert all(it.eig_bits is None and it.score is None for it in res.results)
+    assert all(it.reasons is not None for it in res.results)  # 追加フィールド
+    rf = [it.r_final for it in res.results]
+    assert rf == sorted(rf, reverse=True)
+    print("  ✓ eig None / r_final 降順 / reasons は追加されるのみ")
+
+
+def test_candidate_count_competitive() -> None:
+    print("Test 20: candidate_count = competitive set(団子で多く、分離で減る)+ catalog_size")
+    from recommend_v2 import _competitive_count
+    packed = [1.0, 0.9, 0.8, 0.7, 0.6, 0.59, 0.58, 0.57]   # 6位以降が5位の近傍
+    separated = [1.0, 0.9, 0.8, 0.7, 0.6, 0.2, 0.1, 0.05]  # 6位以降が大きく分離
+    c_packed = _competitive_count(packed, top_n=5)
+    c_sep = _competitive_count(separated, top_n=5)
+    assert c_packed > c_sep, (c_packed, c_sep)
+    assert c_sep == 5, c_sep                                # 分離時は TOP-N に寄る
+    assert _competitive_count([1.0] * 8, top_n=5) == 5      # 退化(全同値)→ TOP-N
+    user = _make_user(mu_thickness=1.0)
+    km = [_make_km_row(f"p{i}", LabValue(L=50 + i, a=40, b=10)) for i in range(8)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=5))
+    assert res.catalog_size == 8
+    assert 5 <= res.candidate_count <= 8
+    print(f"  ✓ packed={c_packed} > separated={c_sep}, 退化=5, "
+          f"response candidate_count={res.candidate_count}/catalog={res.catalog_size}")
+
+
+def test_evidence_filled_from_user() -> None:
+    print("Test 21: reasons.top_axes.evidence は user.pref_evidence から最大2件充填")
+    mu = [0.0] * 20
+    var = [1.0] * 20
+    mu[6] = 1.0; var[6] = 0.3       # sheer → top_axes
+    user = _user_with_pref(mu, var)
+    user.pref_evidence = {"sheer": ["pair_03", "pair_07", "pair_09"]}
+    x20 = [0.0] * 20
+    x20[6] = 0.8
+    km = [_make_km_row("p", LabValue(L=50, a=40, b=10), x20=x20),
+          _make_km_row("q", LabValue(L=48, a=38, b=8), x20=[0.1] * 20)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    p = next(it for it in res.results if it.product_id == "p")
+    sheer = next(a for a in p.reasons.top_axes if a.axis == "sheer")
+    assert sheer.evidence == ["pair_03", "pair_07"], sheer.evidence
+    print(f"  ✓ sheer.evidence={sheer.evidence}(pref_evidence から最大2件)")
+
+
+def test_scene_match_i_dialog() -> None:
+    print("Test 22: scenes 指定で reasons.scene_match(I_dialog)が効く / 未指定は False")
+    from catalog_x20 import AXIS_NAMES
+    si = AXIS_NAMES.index("sweetness")        # date が言及する軸
+    user = _make_user(mu_thickness=1.0)
+    user.scenes = ["date"]
+    x20_hit = [0.0] * 20
+    x20_hit[si] = 0.9                          # date 言及軸が高い → match
+    x20_miss = [0.0] * 20
+    x20_miss[si] = 0.1                         # 低い → no match
+    km = [_make_km_row("hit", LabValue(L=50, a=40, b=10), x20=x20_hit),
+          _make_km_row("miss", LabValue(L=50, a=40, b=10), x20=x20_miss)]
+    res = recommend_v2(RecommendV2Request(user=user, km_table=km, top_n=2))
+    by = {it.product_id: it for it in res.results}
+    assert by["hit"].reasons.scene_match is True, by["hit"].reasons
+    assert by["miss"].reasons.scene_match is False, by["miss"].reasons
+    # scenes 未指定 → scene_match は全 False(完全後方互換)
+    res2 = recommend_v2(RecommendV2Request(user=_make_user(mu_thickness=1.0),
+                                           km_table=km, top_n=2))
+    assert all(it.reasons.scene_match is False for it in res2.results)
+    print("  ✓ date×sweetness高=match / 低=no match / scenes無=全False")
+
+
 if __name__ == "__main__":
     test_effective_lab_interpolation()
     test_beta_explore_monotone()
@@ -312,5 +480,14 @@ if __name__ == "__main__":
     test_rerank_w0_matches_default_order()
     test_rerank_explore_weight_default_uses_theta()
     test_explore_does_not_ignore_color()
+    test_reasons_percentile_order()
+    test_reasons_n1_boundary()
+    test_reasons_rho_gate_and_negative()
+    test_reasons_product_traits_exclude()
+    test_determinism_and_tiebreak()
+    test_reasons_backward_compat_additive()
+    test_candidate_count_competitive()
+    test_evidence_filled_from_user()
+    test_scene_match_i_dialog()
     print("=" * 50)
-    print("✅ recommend_v2.py: 全 13 テスト合格")
+    print("✅ recommend_v2.py: 全 22 テスト合格")
