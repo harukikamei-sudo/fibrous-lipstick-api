@@ -28,8 +28,14 @@
 **✅ PR #1 マージ完了(2026-07-13)**: fibrous-lipstick-ui の main に統合済み(feat/v14-merge は削除)。
 以降フロントの正は **main**。Kawano さんの ①アイコン ③AR ズーム調整はまだ未 push。
 
-**人間/Kawano 待ち**: ① ブラウザ通し確認(Haruki・.env.local を v14 プレビュー Space に)
-② コンシェルジュ文面3パターン ③ API feat/v14 → main マージ計画 ④ 決定後の完了演出デザイン(Kawano さん)
+**✅ v14 本番リリース完了(2026-07-13・人間承認)**: API `feat/v14` → **main にマージ**(62 コミット・
+fast-forward 可能状態で --no-ff、main CI green)→ **本番 Space に orphan push でデプロイ**
+(HF の >1MB PNG 履歴拒否対策・プレビューと同手順)。本番で /v14/*・/v13/popular・concierge 全 200、
+8問通し(カウンタ単調)+ 旧 /recommend 回帰なしをライブ確認。フロント `.env.example` の既定を本番 URL に
+戻した(= .env.local 無しで本番接続)。**プレビュー Space は次の feat 検証用に残置**。
+
+**人間/Kawano 待ち**: ① ブラウザ通し確認(Haruki・main のままで OK)
+② コンシェルジュ文面3パターン ③ 決定後の完了演出デザイン(Kawano さん)④ ①アイコン ③AR ズーム(Kawano さん)
 ※ extras{action,kept,decided} は**実装済み**(承認済・❤️/✕/「この色に決める」に付与。LOG エポック18)。
 
 ---

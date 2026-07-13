@@ -1384,6 +1384,15 @@ mina/yuki 対照**の系列で完全に決着:
   Observation.extras で受け入れ済み(ベイズ更新不使用=Phase 2 の購買意思データ収集)。
   like と decide の区別は今記録しないと後から取り返せない、が判断理由。プレビュー Space で受理をライブ確認。
   決定後の完了演出は Kawano さんのデザイン課題として残置。
+- **v14 本番リリース(2026-07-13・人間承認「もうやって欲しい」)**: Kawano が PR #1 をマージ
+  (fibrous-lipstick-ui main が正・feat/v14-merge 削除)→ API `feat/v14` を **main にマージ**
+  (62 コミット・分岐なし・--no-ff、main CI green)→ **本番 Space へ orphan push デプロイ**
+  (プレビューと同手順。本番 Space も >1MB PNG の履歴拒否があるため orphan 必須)。
+  ライブ検証: /v14/* + /v13/popular + concierge 全 200、8問通しでカウンタ単調(生値は揺れ・表示は単調)、
+  旧 /recommend 回帰なし。フロント `.env.example` 既定を本番 URL に戻し(ui main `b2e3c7d`)、
+  **プレビュー Space は次の feat 検証用に残置**。
+  ※ Kawano からは別件で `spatial-canvas`(Three.js 3Dブレストツール・GitHub Issues エクスポート)の共有もあり
+  (口紅とは独立の別プロダクト・READ 権限のみ)。
 
 ---
 
