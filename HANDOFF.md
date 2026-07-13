@@ -36,6 +36,9 @@ fast-forward 可能状態で --no-ff、main CI green)→ **本番 Space に orph
 
 **人間/Kawano 待ち**: ① ブラウザ通し確認(Haruki・main のままで OK)
 ② コンシェルジュ文面3パターン ③ 決定後の完了演出デザイン(Kawano さん)④ ①アイコン ③AR ズーム(Kawano さん)
+⑤ **[本番で実ユーザーが踏み得る] 唇撮影の間欠エラー**(LipCapture/lipDetection・Kawano さん領域):
+  videoWidth=0 の瞬間に detect → 撮影ボタンで alert。機序と修正候補(ガード1行 + loadingPromise リセット)は
+  **LOG 残課題 -1** に明記。ui README 残課題にも記載済み。
 ※ extras{action,kept,decided} は**実装済み**(承認済・❤️/✕/「この色に決める」に付与。LOG エポック18)。
 
 ---

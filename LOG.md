@@ -1398,6 +1398,17 @@ mina/yuki 対照**の系列で完全に決着:
 
 ## 残課題(後続のため)
 
+-1. **[本番・Kawano さん領域] 唇撮影の間欠エラー(fibrous-lipstick-ui / LipCapture + lipDetection)**:
+   カメラ起動直後に撮影すると間欠的に「撮影処理でエラーが発生しました」/検出が始まらない。機序(コード確認済・2026-07-13):
+   (a) `tick`/`capture` は `video.readyState < 2` はガードするが **`videoWidth === 0` をガードしない**。
+       iOS Safari 等では readyState≥2 でも寸法が数フレーム 0 のことがあり、0×0 を `landmarker.detect()` に渡すと throw
+       (tick 側は握りつぶすが、**撮影ボタン側は alert に到達**=ユーザー可視)。
+   (b) `loadFaceLandmarker` の `loadingPromise` が **失敗時も rejected のままキャッシュ**され、CDN 一時失敗が
+       リロードまで永続化(以後の全 detect が即失敗)。
+   (c) `runningMode:"IMAGE"` のまま動画を毎 rAF detect(MediaPipe の正道は VIDEO モード + `detectForVideo(ts)`)。
+   修正候補: (a) `videoWidth>0` ガード1行 (b) catch で `loadingPromise=null` に戻す (c) は任意(挙動改善)。
+   **本番リリース済みのため実ユーザーが踏み得る**。Kawano さんへ共有済み(HANDOFF 待ちリスト + ui README 残課題)。
+
 0. **[Phase 2・実ユーザー検証] mina/aya collapse は合成 persona 固有か**: A4 harness のペルソナは私の
    合成定義で、mina(matching=10)は人工的な edge の可能性。実ユーザーデータが集まったら「色の好みが
    近いユーザー同士で TOP5 が似る」現象が実在するか、reasons による差別化が体感として機能するかを再検証する
