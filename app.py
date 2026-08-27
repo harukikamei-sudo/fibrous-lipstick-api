@@ -24,7 +24,7 @@ import socket
 import statistics
 from io import BytesIO
 from typing import Dict, List, Literal, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import numpy as np
 import requests
@@ -356,6 +356,10 @@ def _validate_url(url: str) -> None:
     except socket.gaierror:
         raise HTTPException(status_code=400, detail="ホスト名解決失敗")
 
+    if not addrinfo:
+        raise HTTPException(status_code=400, detail="ホスト名解決失敗")
+
+    valid_ip_seen = False
     for af, _, _, _, sockaddr in addrinfo:
         ip_str = sockaddr[0]
         # IPv6 の zone-id (例: fe80::1%eth0) を除去
@@ -365,6 +369,7 @@ def _validate_url(url: str) -> None:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
+        valid_ip_seen = True
         if (
             ip.is_loopback
             or ip.is_private
@@ -375,6 +380,9 @@ def _validate_url(url: str) -> None:
         ):
             raise HTTPException(status_code=400, detail="内部 IP は許可されない")
 
+    if not valid_ip_seen:
+        raise HTTPException(status_code=400, detail="ホスト名解決失敗")
+
 
 def _fetch_image(url: str) -> Image.Image:
     """URL から画像を取得して PIL Image を返す。
@@ -383,15 +391,31 @@ def _fetch_image(url: str) -> Image.Image:
     - stream で取得して MAX_IMAGE_BYTES を超えたら 413 で打ち切り
     - 失敗時は 400 / 413 / 408
     """
-    _validate_url(url)
-
+    current_url = url
     try:
-        res = requests.get(
-            url,
-            timeout=REQUEST_TIMEOUT_SEC,
-            stream=True,
-            headers={"User-Agent": "fibrous-lipstick-api"},
-        )
+        for _ in range(30):
+            _validate_url(current_url)
+            res = requests.get(
+                current_url,
+                timeout=REQUEST_TIMEOUT_SEC,
+                stream=True,
+                headers={"User-Agent": "fibrous-lipstick-api"},
+                allow_redirects=False,
+            )
+            location = res.headers.get("Location")
+            is_redirect = getattr(res, "is_redirect", False) or (
+                getattr(res, "status_code", None) in (301, 302, 303, 307, 308)
+            )
+            if not is_redirect:
+                break
+
+            res.close()
+            if not location:
+                raise HTTPException(status_code=400, detail="画像取得失敗: redirect location missing")
+            current_url = urljoin(current_url, location)
+        else:
+            raise HTTPException(status_code=400, detail="画像取得失敗: too many redirects")
+
         res.raise_for_status()
     except requests.RequestException as e:
         raise HTTPException(status_code=400, detail=f"画像取得失敗: {e}")
