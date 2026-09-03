@@ -19,6 +19,16 @@
 #   MCP サーバが立っておらず Bash も塞いでいたため、投稿手段がゼロで無言終了した
 #   （permission_denials_count: 0 = 拒否ではなく、呼べる道具が無かった）。
 #   Claude には結果を返させるだけにして、投稿は後続ステップの gh で行う。
+#
+# 【要点3】このファイルを直したら、先に main へマージすること。
+#   claude-code-action は、ワークフローがデフォルトブランチの版と同一内容でないと
+#   実行せずにスキップする（PR でワークフローを書き換えて秘密を持ち出す経路を塞ぐため）。
+#   ジョブは「成功」で終わり、警告はログの中にしか出ないので、コメントが付かないのを
+#   見て「何も指摘しなかった」と誤読しやすい。
+#     Workflow validation failed. The workflow file must exist and have identical
+#     content to the version on the repository's default branch.
+#   直す手順: (1) ワークフロー修正だけの PR を main へマージ
+#            (2) 確かめたいブランチに main を取り込む (3) push して synchronize で発火
 
 name: cold-diff
 
