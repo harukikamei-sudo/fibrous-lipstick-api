@@ -1,45 +1,79 @@
-name: Claude Code Review
+# cold-diff — 仕様を渡さずに PR の diff を読ませる
+#
+# 対象リポジトリの .github/workflows/claude-code-review.yml として置く。
+# あわせて templates/REVIEW.md をリポジトリのルートへ置く（レビュー指示の正はそちら）。
+#
+# 設計の理由は ai-development-workflow の .claude/skills/cold-diff/SKILL.md にある。
+#
+# 認証: CLAUDE_CODE_OAUTH_TOKEN（サブスクリプションの範囲内で動く）。
+#       Anthropic の公式 Code Review 機能とは別物。あちらは Team/Enterprise 限定で、
+#       1レビューあたり $15〜25 が usage credits から別途請求される。
+#
+# 【この雛形の要点】PR のタイトル・本文・ブランチ名・番号を渡さない。
+#   受け入れ条件は PR 本文に書く運用なので、渡すと Review② と同じ問いになる。
+#   diff は git から自分で作る。番号を渡すと本文を取りに行けてしまうため渡さない。
+
+name: cold-diff
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    paths:
+      - '**.py'
+  workflow_dispatch:
 
 jobs:
-  claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
+  cold-diff:
     runs-on: ubuntu-latest
+    # 常に成功で終わる。マージを止めない。
+    continue-on-error: true
+
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # diff を自分で作るため履歴が要る（fetch-depth: 1 では作れない）
+          fetch-depth: 0
 
-      - name: Run Claude Code Review
-        id: claude-review
+      - name: diff を作る
+        run: |
+          # base はブランチ名（main）なので仕様を含まない。
+          # head 側は HEAD で参照する。ブランチ名（fix/ssrf-... 等）は意図を伝えるので使わない。
+          git fetch --no-tags origin "${{ github.base_ref }}" --depth=50 || git fetch --no-tags origin "${{ github.base_ref }}"
+          git diff "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
+          echo "diff 行数: $(wc -l < /tmp/pr.diff)"
+          if [ ! -s /tmp/pr.diff ]; then echo "SKIP=1" >> "$GITHUB_ENV"; fi
+          if [ "$(wc -l < /tmp/pr.diff)" -gt 3000 ]; then
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            echo "diff が大きすぎるため見送る。"
+          fi
+
+      - name: cold-diff を実行
+        if: env.SKIP != '1'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          prompt: |
+            /tmp/pr.diff に、このリポジトリへの変更の diff がある。
 
+            リポジトリルートの REVIEW.md を読み、その指示に従ってレビューし、
+            結果を PR のコメントとして1件だけ投稿すること。
+
+            守ること:
+            - PR のタイトル・本文・ブランチ名・番号を参照しない。
+              gh コマンドで PR の情報を取りに行かない
+            - 判断材料は /tmp/pr.diff と、このリポジトリのコードだけ
+            - コードを書き換えない。テストを実行しない
+            - 指摘は最大5件。無ければ「findings: (なし)」とだけ書く
+
+            コメントの冒頭に次の1行を必ず入れること:
+            「仕様を渡さずに diff だけを読んだ結果です。マージを止めるものではありません。」
+          # PR 本文へ到達する経路を塞ぐ。gh は PR 情報の取得に使えるため許可しない。
+          claude_args: >-
+            --allowedTools "Read,Grep,Glob,mcp__github_comment__create_comment"
+            --disallowedTools "Bash,Edit,Write,WebFetch,WebSearch"
