@@ -213,7 +213,7 @@ def compute_chroma(lab):
     if isinstance(lab, dict):
         a = float(lab["a"]); b = float(lab["b"])
     else:
-        a = float(lab[1]); b = float(lab[2])
+        a = float(lab[0]); b = float(lab[2])
     return float((a * a + b * b) ** 0.5)
 
 
