@@ -1,0 +1,71 @@
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+exclude = ['^hf_streamlit_space/']
+
+# Pydantic/FastAPI がインストール済みかどうかで BaseModel のコンストラクタ解析が
+# 変わらないよう、third-party 側は missing import 時と同じ扱いに固定する。
+[[tool.mypy.overrides]]
+module = ["pydantic", "pydantic.*", "fastapi", "fastapi.*", "starlette", "starlette.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
+# scripts/figures/make_a4_validation.py: 既知の型エラー 24 件。
+# A4 検証ハーネス内の混在型を後続タスクで整理する。
+[[tool.mypy.overrides]]
+module = ["scripts.figures.make_a4_validation", "make_a4_validation"]
+ignore_errors = true
+
+# test_recommend_v2.py: 既知の型エラー 15 件。
+# 既存のスクリプト型テストの型注釈整備を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "test_recommend_v2"
+ignore_errors = true
+
+# app.py: 既知の型エラー 12 件。
+# FastAPI/Pydantic 境界の型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "app"
+ignore_errors = true
+
+# bayesian.py: 既知の型エラー 5 件。
+# Gaussian 更新ロジックの型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "bayesian"
+ignore_errors = true
+
+# recommend_v2.py: 既知の型エラー 3 件。
+# 推薦スコア計算の型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "recommend_v2"
+ignore_errors = true
+
+# ui_v13.py: 既知の型エラー 1 件。
+# Streamlit UI 境界の型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "ui_v13"
+ignore_errors = true
+
+# scripts/figures/make_experience_figures.py: 既知の型エラー 1 件。
+# 図表生成スクリプト内の型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = ["scripts.figures.make_experience_figures", "make_experience_figures"]
+ignore_errors = true
+
+# concierge_speech.py: 既知の型エラー 1 件。
+# 音声応答ロジックの型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "concierge_speech"
+ignore_errors = true
+
+# bayes_plot.py: 既知の型エラー 1 件。
+# 可視化スクリプトの型整理を後続タスクで行う。
+[[tool.mypy.overrides]]
+module = "bayes_plot"
+ignore_errors = true

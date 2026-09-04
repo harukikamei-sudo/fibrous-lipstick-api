@@ -90,7 +90,7 @@ def test_pair_apply_unknown_pair_id() -> None:
     assert_status(r, 200, "未知 pair_id でも 200")
     d = r.json()
     assert d["n_color_obs"] == 0 and d["n_worldview_obs"] == 0
-    print(f"  ✓ 未知ペアは集計に入らない (n_color=0, n_wv=0)")
+    print("  ✓ 未知ペアは集計に入らない (n_color=0, n_wv=0)")
 
 
 def test_pair_apply_empty_choices_400() -> None:
@@ -210,7 +210,7 @@ def test_recommend_normal() -> None:
     # 降順チェック
     rs = [it["r_final"] for it in d["results"]]
     assert rs == sorted(rs, reverse=True), "R_final 降順でない"
-    print(f"  ✓ TOP-5 全フィールド OK, image_url 含む")
+    print("  ✓ TOP-5 全フィールド OK, image_url 含む")
     img = d["results"][0]["image_url"]
     assert img and img.startswith("http"), f"image_url が URL でない: {img}"
     print(f"  ✓ TOP-1 image_url: {img[:60]}...")
@@ -251,7 +251,7 @@ def test_recommend_thickness_changes_eff_lab() -> None:
         assert abs(a_eff["L"] - b_eff["L"]) > 0.5, "L が変化していない"
         print(f"  ✓ μ_t=0.2: L={a_eff['L']:.1f}, μ_t=0.9: L={b_eff['L']:.1f}")
     else:
-        print(f"  ⚠ 共通商品なし(両方とも個人化が強く効いた)")
+        print("  ⚠ 共通商品なし(両方とも個人化が強く効いた)")
 
 
 def test_recommend_serendipity_explore_high() -> None:

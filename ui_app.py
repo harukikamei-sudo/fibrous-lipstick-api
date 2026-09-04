@@ -253,7 +253,7 @@ def show_zoom_dialog(comp_img, lip_rgb_before, name, line_category, deltaE,
         st.markdown("**素の唇 (Before)**")
         st.image(lip_rgb_before, use_container_width=True)
     with c2:
-        st.markdown(f"**塗布後 (After)**")
+        st.markdown("**塗布後 (After)**")
         st.image(comp_img, use_container_width=True)
     st.markdown(f"### {name}")
     score_line = (f"PC スコア = **{pc_score}**(小さいほど合う)"

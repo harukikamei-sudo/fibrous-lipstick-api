@@ -40,7 +40,7 @@ import os
 import random
 import statistics
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 # リポジトリルート + scripts/figures を import パスに追加
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -107,7 +107,6 @@ def run_hit(kind: str, w, prior_user, cand_labs, true_de_cache,
     pool = list(cand_labs)
     miss: List[float] = []
     for _ in range(N_MAX):
-        mu_c = user.theta_color.mu         # この μ でおすすめを出す(選択にのみ使用)
         idx = _select_idx(kind, w, user, pool, rng)
         pid, lab = pool.pop(idx)
         # 失敗判定: 出したおすすめ色が「本当の好み」から大きく外れていたか(真値との色差)
@@ -235,7 +234,7 @@ def main() -> None:
     print("シミュレーション中...")
     data = simulate()
 
-    pm, tp = data["prior_mu"], data["true_lab"]
+    pm = data["prior_mu"]
     print(f"\n事前 μ_color=({pm.L:.1f},{pm.a:.1f},{pm.b:.1f}) / "
           f"真値={data['true_id']} ズレ={data['gap']:.1f} ΔE")
     c = data["curves"]          # 累積(図の値)

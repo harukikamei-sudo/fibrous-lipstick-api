@@ -395,7 +395,7 @@ def main() -> None:
           f"事前とのズレ = {data['true_gap']:.1f} ΔE2000(=中程度)")
 
     c = data["curves"]
-    print(f"\n各 N での平均ズレ ΔE2000(真値まで。小さいほど好みに近い):")
+    print("\n各 N での平均ズレ ΔE2000(真値まで。小さいほど好みに近い):")
     print(f"{'N':>3} {'exploit':>9} {'active(EIG)':>12} {'random*':>9}")
     for n in range(N_MAX + 1):
         print(f"{n:>3} {c['exploit'][n]:9.2f} {c['active_learning'][n]:12.2f} "
@@ -415,8 +415,8 @@ def main() -> None:
     print(f"    本番 ΔE2000 では random が N=1〜{N_FIG2} で終始リード"
           f"({'確認' if rand_lead else '一部逆転あり'})。"
           f"EIG は KL(信念移動)最大化であって真値最小化ではないため(既知現象)。")
-    print(f"  ・よって図は『現行(exploit) vs 能動学習(EIG)』の2本に変更。"
-          f"主張は『能動学習は現行方式より少ない試着で好みに近づく』のみ。")
+    print("  ・よって図は『現行(exploit) vs 能動学習(EIG)』の2本に変更。"
+          "主張は『能動学習は現行方式より少ない試着で好みに近づく』のみ。")
     print(f"  ・末尾 N={N_MAX} で能動学習は現行より "
           f"{c['exploit'][N_MAX] - c['active_learning'][N_MAX]:.1f} ΔE 好みに近い。")
 

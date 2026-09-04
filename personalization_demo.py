@@ -13,7 +13,6 @@
 """
 
 import csv
-import json
 from typing import Dict, List
 
 from fastapi.testclient import TestClient
@@ -124,7 +123,7 @@ for name, u in [("ミナ", mina), ("アヤ", aya), ("ユウキ", yuki)]:
           f"μ_thick={u['theta_thickness']['mu']:.2f}, "
           f"σ²_thick={u['theta_thickness']['var']:.4f}")
 
-print(f"\n3 人の初期 TOP-5(全員同じになるはず):")
+print("\n3 人の初期 TOP-5(全員同じになるはず):")
 top_mina_0 = get_top5(mina)
 top_aya_0 = get_top5(aya)
 top_yuki_0 = get_top5(yuki)
@@ -205,8 +204,8 @@ for name, before, after in [
           f"{after['theta_color']['var']['L']:.4f}")
 
 mina_var_drop = mina['theta_thickness']['var'] - mina_after['theta_thickness']['var']
-print(f"\n✅ H2: 全員 σ² が縮小、「ミナは濃いめ派(μ=0.88)」「アヤは薄め派(μ≈0.2)」"
-      f"「ユウキはガッツリ派(μ≈0.94)」と確信形成")
+print("\n✅ H2: 全員 σ² が縮小、「ミナは濃いめ派(μ=0.88)」「アヤは薄め派(μ≈0.2)」"
+      "「ユウキはガッツリ派(μ≈0.94)」と確信形成")
 
 
 # ============ H3: ペルソナの志向が μ_thickness に反映されているか ============
