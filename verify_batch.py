@@ -5,8 +5,6 @@ products.csv を 50 件ずつ /extract_lab_batch に投げて、Lab と status �
 """
 
 import csv
-import json
-import os
 import sys
 import time
 

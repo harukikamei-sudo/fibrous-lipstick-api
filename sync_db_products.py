@@ -94,8 +94,8 @@ def main() -> None:
 
     print(f"✅ DB products 形式で {len(out_rows)} 商品を出力: {OUT}")
     print(f"   (excluded/Lab欠損 {skipped} 件はスキップ)")
-    print(f"   → Google Sheets の products シート 2 行目以降に貼り付け")
-    print(f"   ※ 11 のライン軸(glossy 等)は lines シート側、ここには含めない")
+    print("   → Google Sheets の products シート 2 行目以降に貼り付け")
+    print("   ※ 11 のライン軸(glossy 等)は lines シート側、ここには含めない")
 
 
 if __name__ == "__main__":

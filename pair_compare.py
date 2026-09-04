@@ -19,7 +19,7 @@ import os
 from typing import Dict, List, Optional
 
 from bayesian import apply_observations
-from catalog_x20 import X20_COL_NAMES, load_x20_from_row
+from catalog_x20 import load_x20_from_row
 from scene_priors import build_pref_prior
 from models_v13 import (
     GaussianLab,
@@ -29,7 +29,6 @@ from models_v13 import (
     Observation,
     PairApplyRequest,
     PairApplyResponse,
-    PairChoice,
     PairInitResponse,
     PairItem,
     PairQuestion,

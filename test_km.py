@@ -228,7 +228,6 @@ def test_estimate_s_scalar():
     print("\n性質7: estimate_s_scalar(飽和ch除外→単一S)")
     fails = []
     white = np.array([96.0, 0.0, 0.0])
-    r_g = km.km_reflectance(np.zeros(3), np.zeros(3), 0.0, lab_to_reflectance(white))
 
     def forward_thin(full_lab, S, t):
         ks = km.ks_from_lab(full_lab)

@@ -220,7 +220,6 @@ def derive_x20(row: Dict[str, str]) -> List[float]:
     # ---- 世界観(products 由来、ヒューリスティック) ----
     warm = _clip01(max(0.0, math.cos(math.radians(hue_deg - 15.0))) * (C / 50.0))
     light = _clip01((L - 40.0) / 40.0)
-    deep = _clip01((50.0 - L) / 40.0)
     sweet_hue = max(0.0, math.cos(math.radians(hue_deg - 10.0)))
 
     # girly: 明るめ × 暖色寄り × 中〜高彩度

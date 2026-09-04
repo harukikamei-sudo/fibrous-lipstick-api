@@ -40,7 +40,7 @@ import pair_eig                          # noqa: E402
 import recommend_v2 as rv2               # noqa: E402
 import scene_priors                      # noqa: E402
 from catalog_x20 import (                # noqa: E402
-    AXIS_NAMES, X20_COL_NAMES, apply_color_correction, load_x20_from_row,
+    AXIS_NAMES, apply_color_correction, load_x20_from_row,
 )
 from constants import TAU2_PREF          # noqa: E402
 from models_v13 import (                 # noqa: E402
@@ -555,7 +555,7 @@ def main() -> None:
     y_ax, y_top = _reasons_top("yuki")
     y_theme = sorted({lab for labs in y_ax.values() for lab in labs})
     shared_my = [p for p in m_top if p in y_top]
-    print(f"\n  ── 対照: mina vs yuki(本当に異なるユーザー)──")
+    print("\n  ── 対照: mina vs yuki(本当に異なるユーザー)──")
     print(f"  mina/yuki 共有 TOP5 = {len(shared_my)} 件(少=推薦自体が別物)")
     print(f"  yuki reasons 軸テーマ = {y_theme}")
     print(f"  → mina 固有軸 = {sorted(set(m_theme) - set(y_theme))} / "
@@ -754,8 +754,8 @@ def _explore_separating_color_pairs(catalog: List[Dict], km_table: List[KMTableR
     print("\n  この5本(+世界観3、scene+8)で学習 → Jaccard(現行 mina/aya=1.00, yuki=0.00 と比較):")
     print(f"    mina/aya  = {_jc('mina', 'aya'):.2f}  (現行 1.00 → 下がれば collapse 解消 / ΔE(μ_color)={de_ma:.1f})")
     print(f"    mina/yuki = {_jc('mina', 'yuki'):.2f}   aya/yuki = {_jc('aya', 'yuki'):.2f}  (yuki 分離 ~0.00 維持か)")
-    print(f"    hit率: " + ", ".join(f"{k}={dres[k]['hit']:.2f}" for k in ("mina", "aya", "yuki")))
-    print(f"    色/世内訳: " + ", ".join(f"{k}={dres[k]['type_counts']}" for k in ("mina", "aya", "yuki")))
+    print("    hit率: " + ", ".join(f"{k}={dres[k]['hit']:.2f}" for k in ("mina", "aya", "yuki")))
+    print("    色/世内訳: " + ", ".join(f"{k}={dres[k]['type_counts']}" for k in ("mina", "aya", "yuki")))
 
     _build_draft_v2(catalog, km_table, row_by_id, buckets, by_cat)
 
