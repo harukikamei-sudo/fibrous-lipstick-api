@@ -1,7 +1,8 @@
 """Tests for extract_lab.classify_status.
 
-These tests pin the existing pure classification behavior without importing
-native image-processing extensions that classify_status does not use.
+These tests pin the existing pure classification behavior. sklearn.cluster and
+scipy.ndimage are stubbed so that classify_status cannot reach them; skimage is
+NOT stubbed and is imported for real by extract_lab.
 """
 
 import sys
@@ -17,8 +18,8 @@ def _install_import_stubs() -> None:
         def __init__(self, *args, **kwargs):
             raise AssertionError("KMeans should not be used by classify_status tests")
 
-    cluster.KMeans = KMeans
-    sklearn.cluster = cluster
+    cluster.KMeans = KMeans  # type: ignore[attr-defined]  # 動的に注入するスタブ
+    sklearn.cluster = cluster  # type: ignore[attr-defined]  # 動的に注入するスタブ
     sys.modules["sklearn"] = sklearn
     sys.modules["sklearn.cluster"] = cluster
 
@@ -31,8 +32,8 @@ def _install_import_stubs() -> None:
             "binary_dilation should not be used by classify_status tests"
         )
 
-    ndimage.binary_dilation = binary_dilation
-    scipy.ndimage = ndimage
+    ndimage.binary_dilation = binary_dilation  # type: ignore[attr-defined]  # 動的に注入するスタブ
+    scipy.ndimage = ndimage  # type: ignore[attr-defined]  # 動的に注入するスタブ
     sys.modules["scipy"] = scipy
     sys.modules["scipy.ndimage"] = ndimage
 

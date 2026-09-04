@@ -1,0 +1,135 @@
+# cold-diff — 仕様を渡さずに PR の diff を読ませる
+#
+# 対象リポジトリの .github/workflows/claude-code-review.yml として置く。
+# あわせて templates/REVIEW.md をリポジトリのルートへ置く（レビュー指示の正はそちら）。
+#
+# 設計の理由は ai-development-workflow の .claude/skills/cold-diff/SKILL.md にある。
+#
+# 認証: CLAUDE_CODE_OAUTH_TOKEN（サブスクリプションの範囲内で動く）。
+#       Anthropic の公式 Code Review 機能とは別物。あちらは Team/Enterprise 限定で、
+#       1レビューあたり $15〜25 が usage credits から別途請求される。
+#
+# 【要点1】PR のタイトル・本文・ブランチ名・番号を Claude に渡さない。
+#   受け入れ条件は PR 本文に書く運用なので、渡すと Review② と同じ問いになる。
+#   diff は git から自分で作る。番号を渡すと本文を取りに行けてしまうため渡さない。
+#   ※ 番号を「シェルのステップ」で使うのは構わない。Claude の入力には入らない。
+#
+# 【要点2】コメントの投稿を Claude にやらせない。
+#   初回の試運転では mcp__github_comment__create_comment を許可したが、
+#   MCP サーバが立っておらず Bash も塞いでいたため、投稿手段がゼロで無言終了した
+#   （permission_denials_count: 0 = 拒否ではなく、呼べる道具が無かった）。
+#   Claude には結果を返させるだけにして、投稿は後続ステップの gh で行う。
+#
+# 【要点3】このファイルを直したら、先に main へマージすること。
+#   claude-code-action は、ワークフローがデフォルトブランチの版と同一内容でないと
+#   実行せずにスキップする（PR でワークフローを書き換えて秘密を持ち出す経路を塞ぐため）。
+#   ジョブは「成功」で終わり、警告はログの中にしか出ないので、コメントが付かないのを
+#   見て「何も指摘しなかった」と誤読しやすい。
+#     Workflow validation failed. The workflow file must exist and have identical
+#     content to the version on the repository's default branch.
+#   直す手順: (1) ワークフロー修正だけの PR を main へマージ
+#            (2) 確かめたいブランチに main を取り込む (3) push して synchronize で発火
+
+name: cold-diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - '**.py'
+  workflow_dispatch:
+
+jobs:
+  cold-diff:
+    runs-on: ubuntu-latest
+    # 常に成功で終わる。マージを止めない。
+    continue-on-error: true
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # diff を自分で作るため履歴が要る（fetch-depth: 1 では作れない）
+          fetch-depth: 0
+
+      - name: diff を作る
+        run: |
+          # base はブランチ名（main）なので仕様を含まない。
+          # head 側は HEAD で参照する。ブランチ名（fix/ssrf-... 等）は意図を伝えるので使わない。
+          git fetch --no-tags origin "${{ github.base_ref }}" || true
+          git diff "origin/${{ github.base_ref }}...HEAD" > /tmp/pr.diff
+          echo "diff 行数: $(wc -l < /tmp/pr.diff)"
+          if [ ! -s /tmp/pr.diff ]; then echo "SKIP=1" >> "$GITHUB_ENV"; fi
+          if [ "$(wc -l < /tmp/pr.diff)" -gt 3000 ]; then
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            echo "diff が大きすぎるため見送る。"
+          fi
+
+      - name: cold-diff を実行
+        id: review
+        if: env.SKIP != '1'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            /tmp/pr.diff に、このリポジトリへの変更の diff がある。
+
+            リポジトリルートの REVIEW.md を読み、その指示に従ってレビューすること。
+
+            守ること:
+            - PR のタイトル・本文・ブランチ名・番号を参照しない
+            - 判断材料は /tmp/pr.diff と、このリポジトリのコードだけ
+            - コードを書き換えない。テストを実行しない
+            - コメントを投稿しない。結果を最後の応答として返すだけでよい
+            - 指摘は最大5件。無ければ「findings: (なし)」とだけ返す
+
+            前置き・要約・挨拶を書かず、REVIEW.md の「出力の形」だけを返すこと。
+          # 読むだけ。投稿は後続ステップが行う。
+          claude_args: >-
+            --allowedTools "Read,Grep,Glob"
+            --disallowedTools "Bash,Edit,Write,WebFetch,WebSearch"
+
+      - name: 結果を取り出して PR にコメントする
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # 番号はシェルでだけ使う。Claude の入力には入らない。
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          FILE="${EXEC_FILE:-/home/runner/work/_temp/claude-execution-output.json}"
+          if [ ! -f "$FILE" ]; then
+            echo "実行ログが見つからない: $FILE"; exit 0
+          fi
+
+          # 最後の result メッセージのテキストを取る。無ければ最後の assistant 発話。
+          jq -r '
+            (if type == "array" then . else [.] end) as $m
+            | ( [ $m[] | select(.type=="result") | .result ] | last )
+              // ( [ $m[] | select(.type=="assistant")
+                    | .message.content[]? | select(.type=="text") | .text ] | last )
+              // ""
+          ' "$FILE" > /tmp/findings.txt || true
+
+          if [ ! -s /tmp/findings.txt ]; then
+            echo "レビュー結果を取り出せなかった。コメントは投稿しない。"
+            exit 0
+          fi
+
+          {
+            echo '## cold-diff'
+            echo
+            echo '仕様を渡さずに diff だけを読んだ結果です。**マージを止めるものではありません。**'
+            echo 'Review② とは入力が違うため、重複も見逃しもあります。'
+            echo
+            cat /tmp/findings.txt
+            echo
+            echo '<sub>指示は REVIEW.md にあります。検出ログへの記録は Ship で行います。</sub>'
+          } > /tmp/comment.md
+
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md

@@ -1,6 +1,5 @@
 """active_learning.py の性質テスト(EIG / next_best)。"""
 
-import sys
 
 from models_v13 import GaussianLab, LabValue
 from active_learning import (

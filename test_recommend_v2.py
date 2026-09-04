@@ -1,6 +1,5 @@
 """recommend_v2.py の性質テスト。"""
 
-import sys
 
 from models_v13 import (
     GaussianLab,
@@ -14,7 +13,6 @@ from models_v13 import (
 from recommend_v2 import (
     beta_from_explore,
     cosine_similarity,
-    delta_e_2000,
     effective_lab,
     recommend_v2,
 )
@@ -143,7 +141,7 @@ def test_thickness_shift_changes_ranking() -> None:
     # mu_thickness が違うと effective_Lab が違う → スコアも違う
     assert (res_l.results[0].effective_lab.L
             != res_f.results[0].effective_lab.L)
-    print(f"  ✓ effective_Lab が μ_thickness で変化\n")
+    print("  ✓ effective_Lab が μ_thickness で変化\n")
 
 
 # ============ Test 6: explore=1 では familiarity が高い商品にペナルティ ============
