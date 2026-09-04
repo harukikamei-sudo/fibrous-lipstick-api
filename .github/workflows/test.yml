@@ -82,6 +82,9 @@ jobs:
       - name: Run test_classify_status.py
         run: python test_classify_status.py
 
+      - name: Run test_ssrf.py
+        run: python test_ssrf.py
+
       - name: Run test_warmup.py
         run: python test_warmup.py
 
