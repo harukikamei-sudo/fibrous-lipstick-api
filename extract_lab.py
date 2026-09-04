@@ -348,18 +348,34 @@ def classify_status(res):
     CLI(main)と API(app.py)で同じロジックを使うため、ここに集約する。
     AUTO_HIGH_* 閾値は固定値(中央値計算なし)。
     """
-    if res.get("status") != "auto":
-        return res.get("status")
-    if (
-        res.get("edge_density") is not None
-        and res.get("size_ratio") is not None
-        and res.get("adj") is not None
-        and res["edge_density"] < AUTO_HIGH_EDGE_MAX
-        and res["size_ratio"] > AUTO_HIGH_SIZE_MIN
-        and (res["adj"] > AUTO_HIGH_ADJ_MIN or not res.get("is_container", False))
-    ):
+    status = res.get("status")
+    if status != "auto":
+        return status
+
+    edge_density = res.get("edge_density")
+    if edge_density is None:
+        return "auto_low"
+    if not (edge_density < AUTO_HIGH_EDGE_MAX):
+        return "auto_low"
+
+    size_ratio = res.get("size_ratio")
+    if size_ratio is None:
+        return "auto_low"
+    if not (size_ratio > AUTO_HIGH_SIZE_MIN):
+        return "auto_low"
+
+    adj = res.get("adj")
+    if adj is None:
+        return "auto_low"
+
+    is_container = res.get("is_container", False)
+    if not is_container:
         return "auto_high"
-    return "auto_low"
+
+    if not (adj > AUTO_HIGH_ADJ_MIN):
+        return "auto_low"
+
+    return "auto_high"
 
 
 def make_thumbnail(img, product_id, status, result):
