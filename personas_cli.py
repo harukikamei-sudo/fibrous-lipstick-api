@@ -9,10 +9,9 @@
 from __future__ import annotations
 
 import csv
-import math
 import readline  # noqa: F401 — input() に履歴/編集を付ける
 import sys
-from typing import Any, Callable, Dict, List
+from typing import Callable, Dict, List
 
 from fastapi.testclient import TestClient
 
@@ -375,11 +374,11 @@ def print_formula() -> None:
         print(f"\n{p.color}{BOLD}{p.label}{RESET} (target_thickness={p.target_thickness}):")
         print(f"  観測 1 件: t={obs['thickness']}, observed_lab.L={obs['observed_lab']['L']:.1f}")
         print(f"  {YELLOW}── θ_thickness 更新 (設計書 §7.5) ──{RESET}")
-        print(f"  σ²_N = 1 / (1/σ²_0 + N/σ²_obs)")
+        print("  σ²_N = 1 / (1/σ²_0 + N/σ²_obs)")
         print(f"       = 1 / (1/{bef['var_t']:.5f} + 1/{sigma_obs_t}) = {new_var_t:.5f}")
         print(f"       {GREEN}implementation: {aft['var_t']:.5f}  ✓{RESET}" if abs(new_var_t-aft['var_t'])<1e-4
               else f"       {RED}implementation: {aft['var_t']:.5f}  ✗{RESET}")
-        print(f"  μ_N = σ²_N × (μ_0/σ²_0 + Σt_k/σ²_obs)")
+        print("  μ_N = σ²_N × (μ_0/σ²_0 + Σt_k/σ²_obs)")
         print(f"      = {new_var_t:.5f} × ({bef['mu_t']:.3f}/{bef['var_t']:.5f} + {obs['thickness']}/{sigma_obs_t})")
         print(f"      = {new_mu_t:.4f}")
         print(f"       {GREEN}implementation: {aft['mu_t']:.4f}  ✓{RESET}" if abs(new_mu_t-aft['mu_t'])<1e-3

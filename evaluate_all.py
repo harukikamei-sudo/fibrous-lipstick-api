@@ -12,7 +12,6 @@ MVP の合格ラインは平均一致率 70%。
 
 import argparse
 import json
-import sys
 from itertools import product as iproduct
 
 import km

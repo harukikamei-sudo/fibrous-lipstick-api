@@ -25,7 +25,7 @@ import os
 import random
 import statistics
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
