@@ -10,8 +10,6 @@
     6. POST /v13/recommend → μ_thickness が動き、effective_Lab が変化することを確認
 """
 
-import json
-import sys
 
 from fastapi.testclient import TestClient
 
@@ -49,7 +47,7 @@ print(f"θ_color: μ=L{prior['theta_color']['mu']['L']:.2f} "
       f"a{prior['theta_color']['mu']['a']:.2f} "
       f"b{prior['theta_color']['mu']['b']:.2f} "
       f"σ²_L={prior['theta_color']['var']['L']:.4f}")
-print(f"θ_pref top-3 abs μ: ", sorted(
+print("θ_pref top-3 abs μ: ", sorted(
     enumerate(prior["theta_pref"]["mu"]), key=lambda x: -abs(x[1]))[:3])
 print(f"θ_thickness: μ={prior['theta_thickness']['mu']:.3f} "
       f"σ²={prior['theta_thickness']['var']:.4f}")
@@ -77,7 +75,7 @@ r = client.post("/v13/recommend", json={"user": user_state, "top_n": 5})
 assert r.status_code == 200, r.text
 res1 = r.json()
 print(f"μ_thickness={res1['mu_thickness']:.3f}, β={res1['beta_used']:.2f}")
-print(f"TOP-5:")
+print("TOP-5:")
 for it in res1["results"]:
     eff = it["effective_lab"]
     print(f"  {it['product_id']:32s} eff=L{eff['L']:5.1f} a{eff['a']:5.1f} b{eff['b']:5.1f} "
@@ -118,7 +116,7 @@ r = client.post("/v13/recommend", json={"user": user2, "top_n": 5})
 assert r.status_code == 200, r.text
 res2 = r.json()
 print(f"μ_thickness={res2['mu_thickness']:.3f}, β={res2['beta_used']:.2f}")
-print(f"TOP-5:")
+print("TOP-5:")
 for it in res2["results"]:
     eff = it["effective_lab"]
     print(f"  {it['product_id']:32s} eff=L{eff['L']:5.1f} a{eff['a']:5.1f} b{eff['b']:5.1f} "
@@ -132,7 +130,7 @@ eff2 = next(
     None,
 )
 if eff2 is not None:
-    print(f"\n同 product (TOP1 initial) の effective_Lab 変化:")
+    print("\n同 product (TOP1 initial) の effective_Lab 変化:")
     print(f"  before: L={eff1['L']:.2f} → after: L={eff2['L']:.2f}")
     assert abs(eff1["L"] - eff2["L"]) > 0.5, \
         "μ_thickness が動いても effective_Lab が変化していない"

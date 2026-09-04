@@ -5,10 +5,8 @@ import sys
 
 from bayesian import (
     SIGMA2_BY_SOURCE,
-    SIGMA2_OBS_THICKNESS,
     apply_observations,
     update_theta_color,
-    update_theta_explore,
     update_theta_pref,
     update_theta_thickness,
 )

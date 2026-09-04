@@ -4,7 +4,6 @@ start → next×N → done の一気通貫、逐次EIGが同一ペアを二度�
 effective_lab が lip_lab に依存して変わること、v13 エンドポイントの回帰なし。
 """
 
-import sys
 
 from fastapi.testclient import TestClient
 
