@@ -79,6 +79,9 @@ jobs:
       - name: Run test_lab_utils.py
         run: python test_lab_utils.py
 
+      - name: Run test_classify_status.py
+        run: python test_classify_status.py
+
       - name: Run test_bayesian.py
         run: python test_bayesian.py
 
