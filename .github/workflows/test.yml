@@ -85,6 +85,9 @@ jobs:
       - name: Run test_ssrf.py
         run: python test_ssrf.py
 
+      - name: Run test_warmup.py
+        run: python test_warmup.py
+
       - name: Run test_bayesian.py
         run: python test_bayesian.py
 

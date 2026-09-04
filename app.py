@@ -18,6 +18,7 @@
 
 import csv
 import ipaddress
+import logging
 import math
 import os
 import socket
@@ -34,12 +35,34 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field, model_validator
 from skimage import color as skcolor
 
-# extract_lab は sklearn(→ scipy.stats / scipy.sparse.csgraph)を import するため
-# 起動が重い。/extract_lab[_batch] でしか使わないので遅延 import にして、
-# v13 系エンドポイント(extract_lab 不要)の起動を軽くする。
-def _el():
+logger = logging.getLogger(__name__)
+
+_EXTRACT_LAB_MODULE = None
+
+
+def _import_extract_lab():
     import extract_lab as el  # noqa: PLC0415 (intentional lazy import)
     return el
+
+
+# extract_lab は sklearn(→ scipy.stats / scipy.sparse.csgraph)を import するため
+# 起動が重い。通常起動では startup で先読みするが、失敗した環境でも
+# 従来どおり /extract_lab[_batch] 到達時の遅延 import にフォールバックする。
+def _el():
+    global _EXTRACT_LAB_MODULE
+    if _EXTRACT_LAB_MODULE is None:
+        _EXTRACT_LAB_MODULE = _import_extract_lab()
+    return _EXTRACT_LAB_MODULE
+
+
+def warmup_extract_lab() -> None:
+    """Pre-import extract_lab for endpoints that need it."""
+    try:
+        _el()
+    except Exception:
+        logger.exception(
+            "extract_lab warmup failed; falling back to lazy import"
+        )
 
 import km  # 雛形(numpy のみ、軽量)
 
@@ -140,6 +163,11 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _warmup_extract_lab_on_startup():
+    warmup_extract_lab()
 
 
 # ============ Schemas ============
