@@ -1,7 +1,8 @@
 """Tests for extract_lab.classify_status.
 
-These tests pin the existing pure classification behavior without importing
-native image-processing extensions that classify_status does not use.
+These tests pin the existing pure classification behavior. sklearn.cluster and
+scipy.ndimage are stubbed so that classify_status cannot reach them; skimage is
+NOT stubbed and is imported for real by extract_lab.
 """
 
 import sys
