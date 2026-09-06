@@ -1,0 +1,9 @@
+# ruff の設定。pyproject.toml には置かない。
+# 理由: Vercel の Python ビルドが pyproject.toml を依存の定義として読み、
+#       [project] テーブルが無いと "No `project` table found" で失敗するため。
+#       依存の正は requirements.txt に一本化する。
+
+target-version = "py311"
+
+[lint]
+select = ["E9", "F"]
