@@ -7,13 +7,21 @@ GitHub public リポジトリと Hugging Face Spaces (Docker SDK) の両方に p
 
 - GitHub アカウント
 - Hugging Face アカウント (GitHub アカウントでログイン可)
-- Git に Hugging Face の credential ヘルパーが有効になっていること
+
+**認証はすでに通っている。追加のログインは不要。** HF の write token は git credential
+(osxkeychain) に保存済みで、`git push hf ...` はそのまま通る。
+
+`huggingface-cli login` は**書かない**。このコマンドは廃止済みで、新しい CLI は `hf`。
+そもそもこの手順では不要である。
+
+認証まわりで疑わしいときは、まず次で切り分ける。
 
 ```bash
-# HF のトークン認証 (初回のみ)
-pip install huggingface_hub
-huggingface-cli login        # write 権限のトークンを貼る
+git ls-remote hf     # ref が返れば認証は通っている
 ```
+
+`git fetch hf` が `fatal: expected 'acknowledgments'` で落ちるのは**認証エラーではない**
+(理由は「以降の更新」を参照)。
 
 ## 1. GitHub にリポジトリを作る
 
@@ -45,10 +53,10 @@ git remote add hf     https://huggingface.co/spaces/USER/fibrous-lipstick-api
 
 # まず GitHub
 git push -u origin main
-
-# 続いて Hugging Face Spaces
-git push -u hf main
 ```
+
+**HF への push は通常の push ではない。**「以降の更新」の orphan push 手順を使う。
+新規作成の初回も同じ手順でよい (履歴を送らないので、初回かどうかで変わらない)。
 
 push 後、HF Spaces 側で Dockerfile が読まれて自動ビルドが始まる (数分かかる)。
 ビルドログは Space の `Logs` タブで確認できる。
@@ -73,11 +81,54 @@ open https://USER-fibrous-lipstick-api.hf.space/docs
 
 ## 以降の更新
 
+**GitHub と HF で push の仕方が違う。`git push hf main` は必ず失敗する。**
+
 ```bash
 git add <変更ファイル>
 git commit -m "..."
-git push origin main
-git push hf main
+git push origin main          # GitHub は通常の push
 ```
 
-HF Spaces は push されると自動で再ビルドする。
+HF へは **orphan 単一コミットを force push** する。
+
+```bash
+export GIT_INDEX_FILE=$(mktemp)
+git read-tree origin/main
+git ls-tree -r --name-only origin/main | grep '[.]png$' \
+  | while read -r f; do git rm --cached -q "$f"; done
+TREE=$(git write-tree)
+unset GIT_INDEX_FILE
+
+ORPHAN=$(git commit-tree "$TREE" \
+  -m "deploy: <変更の要約>(main $(git rev-parse --short origin/main) のツリー − 図PNG)")
+
+git push hf "$ORPHAN:main" --force
+```
+
+### なぜ通常の push ではだめか
+
+HF は **1MB 超のバイナリを履歴ごと拒否**する。`git rm` した新しいコミットを積んでも、
+過去の blob が履歴に残っていて pre-receive で弾かれる。**orphan にして履歴ごと捨てる**のが要点。
+
+その結果、HF 側は履歴を持たない単一コミットになっている。GitHub の履歴とは共通の祖先が
+ゼロなので、次のようになる。
+
+| コマンド | 結果 | 意味 |
+| --- | --- | --- |
+| `git push hf main` | `! [rejected] main -> main (fetch first)` | 相手に知らない commit がある |
+| `git fetch hf` | `fatal: expected 'acknowledgments'` | **認証エラーではない。** 共通祖先ゼロの相手とのネゴシエーションが失敗しているだけ |
+| `git ls-remote hf` | ref が返る | 認証は通っている |
+
+**HF から fetch する必要はない。** 履歴を引き継がない運用なので、常に上書きする。
+
+### デプロイ後
+
+HF Spaces は push されると自動で再ビルドする (数分)。
+
+```bash
+curl https://tamable-fibrous-lipstick-api.hf.space/health
+# → {"status":"ok"}
+```
+
+**起動に10秒以上かかる。** `extract_lab` の起動時先読みが入っているため。`cpu-basic` では
+macOS の実測 13.6 秒よりさらに延びる可能性がある。起動しない場合はまずこれを疑う。
